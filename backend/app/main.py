@@ -2,8 +2,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.errors import request_validation_error
 from app.api.router import router
 from app.core.config import get_settings
 from app.db.session import engine
@@ -19,7 +21,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="LandConnect API",
-    description="Land marketplace backend with infrastructure and health checks.",
+    description="Land marketplace backend with authentication, role permissions and health checks.",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -29,6 +31,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_exception_handler(RequestValidationError, request_validation_error)
 
 
 app.include_router(router)
