@@ -8,6 +8,10 @@ The agreed media architecture is **WebRTC through a self-hosted LiveKit SFU**, f
 
 The `livekit-api` dependency is retained for server-side room management and token generation. The SFU service and calling endpoints will be implemented in the calling stage; they are not running yet. See the [SFU architecture decision](docs/04-sfu-architecture.md) or [PDF explanation](docs/LandConnect%20SFU%20Architecture%20Guide.pdf). The implemented authentication dependencies will supply user identity for those features.
 
+## Chat architecture
+
+Direct and group chat will use **PostgreSQL message history and a transactional outbox, Redis Pub/Sub fan-out, and authenticated WebSockets**. Redis carries small change notifications; it is not the message store. Each API instance forwards broker events to its own connected clients after authorization checks. Reconnects recover messages from paginated PostgreSQL history. See the [chat architecture decision](docs/07-chat-architecture.md).
+
 ## Start the backend
 
 Requirements: Git, uv and Docker Desktop running Linux containers. Run these commands from the LandConnect directory:
