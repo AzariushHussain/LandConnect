@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.errors import request_validation_error
+from app.api.middleware import RequestSizeLimitMiddleware
 from app.api.router import router
 from app.core.config import get_settings
 from app.db.session import engine
@@ -21,10 +22,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="LandConnect API",
-    description="Land marketplace backend with authentication, role permissions and health checks.",
+    description="Land marketplace backend with authentication, listings, images and map queries.",
     version="0.1.0",
     lifespan=lifespan,
 )
+app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
