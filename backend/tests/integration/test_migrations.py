@@ -1,12 +1,22 @@
+import uuid
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from alembic import command
-from app.models import Block, Conversation, Listing, Role, User
+from app.models import (
+    Block,
+    Conversation,
+    ConversationKind,
+    ConversationMember,
+    Listing,
+    Message,
+    Role,
+    User,
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -24,6 +34,8 @@ def test_migrations_match_models_and_round_trip(migrated_database):
         "meetings",
         "meeting_members",
         "alembic_version",
+        "conversation_members",
+        "chat_outbox",
     }
     assert set(inspect(db).get_table_names()) == expected_tables
     command.check(config)
@@ -31,7 +43,7 @@ def test_migrations_match_models_and_round_trip(migrated_database):
     assert set(inspect(db).get_table_names()) == {"alembic_version"}
     command.upgrade(config, "head")
     with db.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0001_initial"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002_chat"
     assert set(inspect(db).get_table_names()) == expected_tables
 
 
@@ -96,3 +108,49 @@ def test_database_rejects_invalid_marketplace_data(migrated_database):
             with pytest.raises(IntegrityError):
                 session.commit()
             session.rollback()
+
+
+def test_chat_migration_preserves_old_direct_history_and_guards_group_downgrade(migrated_database):
+    db, config = migrated_database
+    command.downgrade(config, "0001_initial")
+    a, b = sorted((uuid.uuid4(), uuid.uuid4()))
+    conversation = uuid.uuid4()
+    with db.begin() as connection:
+        for user_id, email in ((a, "a@example.com"), (b, "b@example.com")):
+            connection.execute(
+                insert(User).values(
+                    id=user_id,
+                    email=email,
+                    display_name="Legacy",
+                    role=Role.buyer,
+                    password_hash="legacy-hash",
+                )
+            )
+        connection.execute(
+            text(
+                "INSERT INTO conversations (id, user_a_id, user_b_id, created_at) "
+                "VALUES (:id, :a, :b, CURRENT_TIMESTAMP)"
+            ),
+            {"id": conversation, "a": a, "b": b},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO messages (conversation_id, sender_id, body, created_at) "
+                "VALUES (:conversation, :sender, 'preserved history', CURRENT_TIMESTAMP)"
+            ),
+            {"conversation": conversation, "sender": a},
+        )
+    command.upgrade(config, "head")
+    with Session(db) as session:
+        row = session.get(Conversation, conversation)
+        assert row.kind == ConversationKind.direct
+        assert {member.user_id for member in row.members} == {a, b}
+        old_message = session.scalar(select(Message))
+        assert old_message.body == "preserved history" and old_message.client_id is None
+        group = Conversation(kind=ConversationKind.group, name="Keep group", owner_id=a)
+        group.members = [ConversationMember(user_id=a)]
+        session.add(group)
+        session.commit()
+    with pytest.raises(RuntimeError, match="group conversations"):
+        command.downgrade(config, "0001_initial")
+    command.check(config)

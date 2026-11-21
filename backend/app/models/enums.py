@@ -7,6 +7,16 @@ class Role(StrEnum):
     broker = "broker"
 
 
+class ConversationKind(StrEnum):
+    direct = "direct"
+    group = "group"
+
+
+class MemberRole(StrEnum):
+    member = "member"
+    admin = "admin"
+
+
 class ListingStatus(StrEnum):
     draft = "draft"
     active = "active"

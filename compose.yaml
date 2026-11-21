@@ -1,6 +1,16 @@
 name: landconnect
 
 services:
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   db:
     image: postgres:16-alpine
     environment:
@@ -36,11 +46,14 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: ${DOCKER_DATABASE_URL:?Run scripts/init_env.py first}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - uploads:/app/uploads
     depends_on:
+      redis:
+        condition: service_healthy
       db:
         condition: service_healthy
       migrate:

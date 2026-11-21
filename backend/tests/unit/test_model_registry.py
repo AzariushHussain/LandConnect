@@ -14,6 +14,7 @@ def test_model_package_registers_all_tables_without_runtime_settings():
         assert set(Base.metadata.tables) == {
             'users', 'blocks', 'listings', 'listing_images', 'conversations',
             'messages', 'calls', 'meetings', 'meeting_members',
+            'conversation_members', 'chat_outbox',
         }
         assert Listing.owner.property.mapper.class_ is User
         assert Listing.images.property.mapper.class_ is ListingImage

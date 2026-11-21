@@ -5,7 +5,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from app.models.enums import ListingStatus, Role
+from app.models.enums import ListingStatus
+from app.schemas.user import PublicUser
 
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=2)]
 Latitude = Annotated[Decimal, Field(ge=-90, le=90, max_digits=9, decimal_places=6)]
@@ -97,14 +98,6 @@ class OwnedListingFilters(ListingFilters):
     status: ListingStatus | None = None
 
 
-class OwnerSummary(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    display_name: str
-    role: Role
-
-
 class ListingImageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -136,7 +129,7 @@ class ListingResponse(BaseModel):
     status: ListingStatus
     created_at: datetime
     updated_at: datetime
-    owner: OwnerSummary
+    owner: PublicUser
     images: list[ListingImageResponse]
 
 

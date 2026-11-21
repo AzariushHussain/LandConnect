@@ -46,7 +46,7 @@ def create_access_token(user_id: uuid.UUID) -> tuple[str, int]:
     return token, expires_in
 
 
-def decode_access_token(token: str) -> uuid.UUID:
+def decode_access_claims(token: str) -> dict:
     claims = jwt.decode(
         token,
         get_settings().jwt_secret,
@@ -58,6 +58,11 @@ def decode_access_token(token: str) -> uuid.UUID:
     if claims["token_use"] != "access":
         raise jwt.InvalidTokenError("Invalid token purpose")
     try:
-        return uuid.UUID(claims["sub"])
+        uuid.UUID(claims["sub"])
     except ValueError:
         raise jwt.InvalidTokenError("Invalid token subject") from None
+    return claims
+
+
+def decode_access_token(token: str) -> uuid.UUID:
+    return uuid.UUID(decode_access_claims(token)["sub"])

@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:3000"]
     upload_dir: str = "uploads"
+    redis_url: str = "redis://127.0.0.1:56379/0"
+    chat_channel_prefix: str = Field(
+        default="landconnect:chat:local", pattern=r"^[A-Za-z0-9:_-]+$", min_length=1, max_length=100
+    )
     livekit_api_key: str
     livekit_api_secret: str = Field(min_length=32)
     livekit_internal_url: str = "http://localhost:7880"

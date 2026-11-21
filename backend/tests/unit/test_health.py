@@ -18,7 +18,7 @@ def client():
     )
     with test_engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
-        connection.execute(text("INSERT INTO alembic_version VALUES ('0001_initial')"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('0002_chat')"))
 
     def session():
         with Session(test_engine) as db:
@@ -46,7 +46,12 @@ def test_liveness_does_not_need_a_database(client):
 def test_readiness_with_current_schema(client):
     response = client[0].get("/health/ready")
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "database": "ok", "migrations": "current"}
+    assert response.json() == {
+        "status": "ready",
+        "database": "ok",
+        "migrations": "current",
+        "redis": "ok",
+    }
 
 
 @pytest.mark.parametrize("old_revision", [None, "old_revision"])
@@ -70,6 +75,13 @@ def test_readiness_hides_database_error_details(client):
     response = client[0].get("/health/ready")
     assert response.status_code == 503
     assert response.json() == {"detail": "Database unavailable"}
+
+
+def test_readiness_requires_the_realtime_subscriber(client):
+    app.state.chat.ready = False
+    response = client[0].get("/health/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Realtime broker unavailable"}
 
 
 @pytest.mark.parametrize(
