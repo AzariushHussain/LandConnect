@@ -7,6 +7,7 @@ import { session } from '../application/services';
 import { useSession } from '../application/use-session';
 import { Action, Brand, Notice, Screen } from '../ui/components';
 import { colors } from '../ui/theme';
+import { canManage } from '../features/management/form';
 
 const theme = {
   ...DefaultTheme,
@@ -71,6 +72,11 @@ export default function RootLayout() {
               <Stack.Screen name="index" options={{ title: 'LandConnect' }} />
               <Stack.Screen name="account" options={{ title: 'My account' }} />
               <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
+              <Stack.Protected guard={state.status === 'signedIn' && canManage(state.user.role)}>
+                <Stack.Screen name="manage/index" options={{ title: 'My properties' }} />
+                <Stack.Screen name="manage/new" options={{ title: 'Add property' }} />
+                <Stack.Screen name="manage/[id]" options={{ title: 'Manage property' }} />
+              </Stack.Protected>
             </Stack.Protected>
             <Stack.Protected guard={state.status === 'signedOut'}>
               <Stack.Screen name="sign-in" options={{ title: 'Welcome' }} />

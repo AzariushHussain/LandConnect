@@ -14,6 +14,14 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-dev-client',
     'expo-secure-store',
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'Choose photos to add to your property listing.',
+        cameraPermission: false,
+        microphonePermission: false,
+      },
+    ],
     './plugins/with-cmake-paths',
     // Android's generated debug manifest permits Metro/LAN HTTP; release stays HTTPS-only.
     ['expo-build-properties', { android: { usesCleartextTraffic: false } }],

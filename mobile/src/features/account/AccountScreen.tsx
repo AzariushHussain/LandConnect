@@ -3,6 +3,8 @@ import { session } from '../../application/services';
 import { useSession } from '../../application/use-session';
 import { Action, Brand, Heading, Screen } from '../../ui/components';
 import { colors } from '../../ui/theme';
+import { router } from 'expo-router';
+import { canManage } from '../management/form';
 
 export function AccountScreen() {
   const state = useSession();
@@ -43,6 +45,9 @@ export function AccountScreen() {
           ])
         }
       />
+      {canManage(user.role) && (
+        <Action label="My properties" onPress={() => router.push('/manage')} />
+      )}
     </Screen>
   );
 }

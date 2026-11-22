@@ -1,4 +1,5 @@
-export type Listing = {
+export type ListingStatus = 'draft' | 'active' | 'sold' | 'archived';
+export type ListingRecord = {
   id: string;
   title: string;
   description: string;
@@ -11,14 +12,20 @@ export type Listing = {
   country: string;
   latitude: string;
   longitude: string;
-  status: 'active';
+  status: ListingStatus;
   created_at: string;
   updated_at: string;
   owner: { id: string; display_name: string; role: 'buyer' | 'seller' | 'broker' };
   images: { id: string; listing_id: string; url: string; created_at: string }[];
 };
 
-export type ListingPage = { items: Listing[]; total: number; limit: number; offset: number };
+export type Listing = ListingRecord & { status: 'active' };
+export type ListingPage<T extends ListingRecord = Listing> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
 export const isListingId = (value: string) =>
   /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value);
 const amount = (value: unknown) =>
@@ -30,7 +37,7 @@ const record = (value: unknown): Record<string, unknown> =>
 const text = (value: unknown, max: number) =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 
-export function parseListing(value: unknown): Listing {
+export function parseListingRecord(value: unknown): ListingRecord {
   const row = record(value);
   const owner = record(row.owner);
   const coordinate = (value: unknown, bound: number) =>
@@ -40,7 +47,7 @@ export function parseListing(value: unknown): Listing {
   const valid =
     typeof row.id === 'string' &&
     isListingId(row.id) &&
-    row.status === 'active' &&
+    ['draft', 'active', 'sold', 'archived'].includes(String(row.status)) &&
     text(row.title, 150) &&
     text(row.description, 10000) &&
     amount(row.price) &&
@@ -90,7 +97,7 @@ export function parseListing(value: unknown): Listing {
     country: row.country,
     latitude: row.latitude,
     longitude: row.longitude,
-    status: 'active',
+    status: row.status,
     created_at: row.created_at,
     updated_at: row.updated_at,
     owner: { id: owner.id, display_name: owner.display_name, role: owner.role },
@@ -100,7 +107,14 @@ export function parseListing(value: unknown): Listing {
       url: image.url,
       created_at: image.created_at,
     })),
-  } as Listing;
+  } as ListingRecord;
+}
+
+export function parseListing(value: unknown): Listing {
+  const listing = parseListingRecord(value);
+  if (listing.status !== 'active')
+    throw new Error('The service returned invalid property details. Please retry.');
+  return listing as Listing;
 }
 
 export function parsePage(value: unknown, offset: number, limit: number): ListingPage {

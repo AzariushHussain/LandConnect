@@ -1,6 +1,6 @@
-# LandConnect mobile - checkpoint 1
+# LandConnect mobile
 
-React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts and an authenticated community feed with search, filters, pagination and property details. FastAPI remains the source of permissions and public property data.
+React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, community browsing and seller/broker property management: private drafts, edits, publishing/unpublishing, sold/archive states and photo uploads/removal. FastAPI remains the source of permissions and property data.
 
 ## Run on your Android phone
 
@@ -58,6 +58,8 @@ Read [the detailed walkthrough](../docs/13-mobile-foundation.md) for the file-by
 
 Read [mobile step 2](../docs/14-mobile-listings.md) for community browsing, filters, exact decimal values, pagination races, photos and property details. After sign-in the community is the home route; My account opens the existing profile screen.
 
+Read [mobile step 3](../docs/15-mobile-property-management.md) for owner management, forms, photos, session/ownership checks and uncertain-write recovery. Sellers and brokers open My account > My properties. Only active listings are public. Photo changes save immediately; unsaved field edits are separate. Native photo dependencies require rebuilding the development client. The image picker blocks camera/microphone permissions at this stage; remove those blocks and configure calling permissions when integrating LiveKit.
+
 The listing contract probe uses real FastAPI routes and an isolated SQLite database without Docker or changes to developer data. From the repository root:
 
 ```powershell
@@ -66,4 +68,4 @@ uv run --project backend python scripts/check_mobile_listings.py
 
 ## Current verification
 
-The foundation development APK built and was installed on the Android phone. The app reached sign-in; further phone UI checks were skipped at the user's request. The current mobile suite has 38 passing tests and a passing FastAPI-to-TypeScript listing contract probe. TypeScript/lint/format and Android development bundle checks pass. The foundation also passed Expo Doctor. Real phone login/listing/image checks await recovery of the Docker/LAN backend. No database/upload volumes were reset.
+The foundation development APK was installed and reached sign-in. This property's management stage rebuilt the ARM64 development APK with the native photo modules, but did not install or operate it on the phone. Phone UI checks remain skipped at the user's request. The current suite has 51 passing tests; the isolated FastAPI-to-TypeScript contract probe covers public browsing and authenticated property/photo lifecycle, including buyer/cross-owner rejection. TypeScript/lint/format, Android development bundle export, native assembleDebug and all 20 Expo Doctor checks pass. Real phone and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Writes are not automatically retried: refresh before repeating an uncertain creation/upload. Concurrent form edits follow last-write-wins behavior.

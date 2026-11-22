@@ -130,4 +130,15 @@ export class SessionController {
     if (this.saved && this.saved.expiresAt <= Date.now())
       void this.signOut('Your session expired. Please sign in again.');
   };
+
+  access() {
+    return this.state.status === 'signedIn' && this.saved && this.saved.expiresAt > Date.now()
+      ? { token: this.saved.token, user: this.state.user }
+      : null;
+  }
+
+  async rejectToken(token: string) {
+    if (this.saved?.token === token)
+      await this.signOut('Your session expired. Please sign in again.');
+  }
 }

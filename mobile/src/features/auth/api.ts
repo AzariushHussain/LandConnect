@@ -1,4 +1,4 @@
-import { ApiClient } from '../../api/client';
+import { ApiClient, ApiError } from '../../api/client';
 import { Credentials, isUser, Registration, TokenResponse, User } from './types';
 
 export class AuthApi {
@@ -26,6 +26,12 @@ export class AuthApi {
   }
 
   async register(registration: Registration): Promise<void> {
-    await this.client.request('/auth/register', { body: registration });
+    try {
+      await this.client.request('/auth/register', { body: registration });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409)
+        throw new ApiError(409, 'This email is already registered. Please sign in.');
+      throw error;
+    }
   }
 }

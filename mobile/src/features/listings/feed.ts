@@ -1,10 +1,9 @@
-import { ListingsApi } from './api';
 import { emptyFilters, ListingFilters, normalizeFilters } from './filters';
-import { Listing } from './types';
+import { Listing, ListingRecord, ListingPage } from './types';
 
-export type FeedState = {
+export type FeedState<T extends ListingRecord = Listing> = {
   status: 'loading' | 'ready' | 'refreshing' | 'loadingMore' | 'error';
-  items: Listing[];
+  items: T[];
   filters: ListingFilters;
   total: number;
   nextOffset: number;
@@ -13,8 +12,8 @@ export type FeedState = {
   error: string;
 };
 
-export class ListingFeed {
-  private state: FeedState = {
+export class ListingFeed<T extends ListingRecord = Listing> {
+  private state: FeedState<T> = {
     status: 'loading',
     items: [],
     filters: { ...emptyFilters },
@@ -26,7 +25,11 @@ export class ListingFeed {
   };
   private generation = 0;
   private listeners = new Set<() => void>();
-  constructor(private readonly api: Pick<ListingsApi, 'page'>) {}
+  constructor(
+    private readonly api: {
+      page(filters: ListingFilters, offset: number, limit: number): Promise<ListingPage<T>>;
+    },
+  ) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -37,7 +40,7 @@ export class ListingFeed {
   invalidate = () => {
     this.generation++;
   };
-  private update(state: FeedState) {
+  private update(state: FeedState<T>) {
     this.state = state;
     for (const listener of this.listeners) listener();
   }

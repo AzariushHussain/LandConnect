@@ -2,7 +2,15 @@ import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../ui/theme';
 
-export function ListingPhoto({ uri, label }: { uri?: string; label: string }) {
+export function ListingPhoto({
+  uri,
+  label,
+  headers,
+}: {
+  uri?: string;
+  label: string;
+  headers?: Record<string, string>;
+}) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(Boolean(uri));
@@ -27,7 +35,7 @@ export function ListingPhoto({ uri, label }: { uri?: string; label: string }) {
       ) : (
         <Image
           key={`${uri}:${attempt}`}
-          source={{ uri }}
+          source={{ uri, headers }}
           resizeMode="cover"
           accessibilityLabel={label}
           style={styles.image}

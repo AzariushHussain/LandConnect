@@ -197,3 +197,24 @@ test('a failed erase blocks continuation until deletion succeeds', async () => {
   assert.equal(f.session.getSnapshot().status, 'signedOut');
   assert.equal(f.stored(), null);
 });
+
+test('access refuses an expired token before the scheduled expiry callback runs', async (context) => {
+  let now = 1_000_000;
+  context.mock.method(Date, 'now', () => now);
+  const f = fixture();
+  await f.session.signIn(credentials);
+  assert.equal(f.session.access()?.token, 'token');
+  now += 3_600_000;
+  assert.equal(f.session.access(), null);
+});
+
+test('rejecting an old request token cannot erase a newly signed-in session', async () => {
+  const f = fixture(saved());
+  await f.session.restore();
+  await f.session.signIn(credentials);
+  await f.session.rejectToken('stored-token');
+  assert.equal(f.session.access()?.token, 'token');
+  await f.session.rejectToken('token');
+  assert.equal(f.session.access(), null);
+  assert.equal(f.stored(), null);
+});
