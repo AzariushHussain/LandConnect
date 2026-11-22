@@ -68,7 +68,9 @@ export default function RootLayout() {
         <ThemeProvider value={theme}>
           <Stack screenOptions={{ headerShadowVisible: false, headerTintColor: colors.ink }}>
             <Stack.Protected guard={state.status === 'signedIn'}>
-              <Stack.Screen name="index" options={{ title: 'My account' }} />
+              <Stack.Screen name="index" options={{ title: 'LandConnect' }} />
+              <Stack.Screen name="account" options={{ title: 'My account' }} />
+              <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
             </Stack.Protected>
             <Stack.Protected guard={state.status === 'signedOut'}>
               <Stack.Screen name="sign-in" options={{ title: 'Welcome' }} />

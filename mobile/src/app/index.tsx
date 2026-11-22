@@ -1,1 +1,1 @@
-export { AccountScreen as default } from '../features/account/AccountScreen';
+export { CommunityScreen as default } from '../features/listings/CommunityScreen';

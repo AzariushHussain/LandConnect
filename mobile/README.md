@@ -1,6 +1,6 @@
 # LandConnect mobile - checkpoint 1
 
-React Native/TypeScript Android application using Expo development builds and Expo Router. This checkpoint implements registration, sign-in, secure session restoration, expiry, account details and device sign-out. The existing FastAPI backend remains the source of account permissions.
+React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts and an authenticated community feed with search, filters, pagination and property details. FastAPI remains the source of permissions and public property data.
 
 ## Run on your Android phone
 
@@ -56,6 +56,14 @@ npx expo export --platform android --dev
 
 Read [the detailed walkthrough](../docs/13-mobile-foundation.md) for the file-by-file explanation, request flows, test boundaries and remaining work.
 
+Read [mobile step 2](../docs/14-mobile-listings.md) for community browsing, filters, exact decimal values, pagination races, photos and property details. After sign-in the community is the home route; My account opens the existing profile screen.
+
+The listing contract probe uses real FastAPI routes and an isolated SQLite database without Docker or changes to developer data. From the repository root:
+
+```powershell
+uv run --project backend python scripts/check_mobile_listings.py
+```
+
 ## Current verification
 
-The ARM64 development APK builds and was installed on the Android phone. The app reached sign-in; further phone UI checks were skipped at the user's request. Twenty mobile tests and the TypeScript/lint/format/Expo Doctor checks pass. Docker container-start requests were hanging after the workspace move, so real phone registration/login remains pending until the backend can be started. No database/upload volumes were reset.
+The foundation development APK built and was installed on the Android phone. The app reached sign-in; further phone UI checks were skipped at the user's request. The current mobile suite has 38 passing tests and a passing FastAPI-to-TypeScript listing contract probe. TypeScript/lint/format and Android development bundle checks pass. The foundation also passed Expo Doctor. Real phone login/listing/image checks await recovery of the Docker/LAN backend. No database/upload volumes were reset.

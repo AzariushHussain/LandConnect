@@ -1,12 +1,12 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android foundation** now adds registration, login, encrypted session persistence, expiry and account details.
+A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts and a community feed with search/filters, pagination, photos and property details.
 
 ## Android application
 
 The application lives in [mobile/](mobile/README.md) and uses TypeScript, Expo Router and Expo development builds. Start the backend with the LAN helper, configure `mobile/.env` from its example, then use `npm ci` and `npm run android -- --device` from `mobile/` with an ADB-authorized Android phone. Subsequent development uses `npm start`. Expo Go is not the supported workflow; later LiveKit integration needs native WebRTC modules.
 
-Read the [detailed first mobile walkthrough](docs/13-mobile-foundation.md) or [PDF guide](docs/LandConnect%20Mobile%20Step%201%20Guide.pdf) for each implementation part, file responsibilities, authentication/session flows, run commands and verification limits. The current mobile feature checkpoint covers accounts; listing, map, chat and calling interfaces follow stepwise.
+Read the [first mobile walkthrough](docs/13-mobile-foundation.md) or [PDF guide](docs/LandConnect%20Mobile%20Step%201%20Guide.pdf) for authentication/session flows, and the [mobile listings walkthrough](docs/14-mobile-listings.md) or [step 2 PDF](docs/LandConnect%20Mobile%20Step%202%20Guide.pdf) for browsing, filters, details and verification limits. Map, chat and calling interfaces follow stepwise.
 
 ## Calling architecture
 
@@ -325,4 +325,4 @@ Git is initialized at the project root on `main`. Keep `uv.lock` in Git; `.env` 
 docker compose down
 ```
 
-PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. The Android account foundation is implemented; the next checkpoint is **community listing browsing and details**, after you say **next**. Physical-device audio/video demonstrations are still required.
+PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. Android community browsing and details are implemented; the next feature checkpoint is **seller/broker listing management**, after you say **next**. Restore Docker/LAN API startup before live app testing. Physical-device audio/video demonstrations are still required.
