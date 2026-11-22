@@ -121,6 +121,13 @@ export function CommunityScreen() {
       )}
       {!!formError && <Notice error>{formError}</Notice>}
       <Action label="Search properties" onPress={() => search()} busy={busy} />
+      <Action
+        label="Explore properties on map"
+        secondary
+        onPress={() =>
+          router.push({ pathname: '/map', params: { filters: JSON.stringify(state.filters) } })
+        }
+      />
       {(active > 0 || Object.values(draft).some(Boolean)) && (
         <Action label="Clear search and filters" onPress={() => search(true)} secondary />
       )}

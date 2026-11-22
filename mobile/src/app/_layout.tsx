@@ -72,6 +72,7 @@ export default function RootLayout() {
               <Stack.Screen name="index" options={{ title: 'LandConnect' }} />
               <Stack.Screen name="account" options={{ title: 'My account' }} />
               <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
+              <Stack.Screen name="map" options={{ title: 'Property map' }} />
               <Stack.Protected guard={state.status === 'signedIn' && canManage(state.user.role)}>
                 <Stack.Screen name="manage/index" options={{ title: 'My properties' }} />
                 <Stack.Screen name="manage/new" options={{ title: 'Add property' }} />

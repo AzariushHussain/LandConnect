@@ -11,6 +11,19 @@ const config: ExpoConfig = {
   android: { package: 'com.landconnect.app', predictiveBackGestureEnabled: true },
   ios: { bundleIdentifier: 'com.landconnect.app', supportsTablet: true },
   plugins: [
+    '@maplibre/maplibre-react-native',
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Find nearby properties or help choose a property location when you request it.',
+        locationAlwaysPermission: false,
+        locationAlwaysAndWhenInUsePermission: false,
+        isIosBackgroundLocationEnabled: false,
+        isAndroidBackgroundLocationEnabled: false,
+        isAndroidForegroundServiceEnabled: false,
+      },
+    ],
     'expo-router',
     'expo-dev-client',
     'expo-secure-store',

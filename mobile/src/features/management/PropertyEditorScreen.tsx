@@ -9,6 +9,7 @@ import { ListingPhoto } from '../listings/ListingPhoto';
 import { isListingId, ListingRecord } from '../listings/types';
 import { emptyProperty, propertyFields, propertyForm, validateProperty } from './form';
 import { choosePropertyPhoto } from './photos';
+import { LocationPicker } from '../maps/LocationPicker';
 
 export function PropertyEditorScreen({ id }: { id?: string }) {
   useSession();
@@ -19,6 +20,7 @@ export function PropertyEditorScreen({ id }: { id?: string }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [discard, setDiscard] = useState(false);
+  const [choosingLocation, setChoosingLocation] = useState(false);
   const locked = useRef(false);
   const mounted = useRef(true);
   const generation = useRef(0);
@@ -171,6 +173,23 @@ export function PropertyEditorScreen({ id }: { id?: string }) {
       {!!notice && <Notice>{notice}</Notice>}
       {(!id || record) && (
         <>
+          <Action
+            label="Choose location on map"
+            secondary
+            disabled={disabled}
+            onPress={() => setChoosingLocation(true)}
+          />
+          {choosingLocation && (
+            <LocationPicker
+              latitude={form.latitude}
+              longitude={form.longitude}
+              onCancel={() => setChoosingLocation(false)}
+              onConfirm={(point) => {
+                setForm((current) => ({ ...current, ...point }));
+                setChoosingLocation(false);
+              }}
+            />
+          )}
           {propertyFields.map(([key, label, maxLength]) => (
             <Field
               key={key}

@@ -1,6 +1,6 @@
 # LandConnect mobile
 
-React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, community browsing and seller/broker property management: private drafts, edits, publishing/unpublishing, sold/archive states and photo uploads/removal. FastAPI remains the source of permissions and property data.
+React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, community browsing, seller/broker property management, photos, map browsing and property location selection. FastAPI remains the source of permissions and property data.
 
 ## Run on your Android phone
 
@@ -60,6 +60,8 @@ Read [mobile step 2](../docs/14-mobile-listings.md) for community browsing, filt
 
 Read [mobile step 3](../docs/15-mobile-property-management.md) for owner management, forms, photos, session/ownership checks and uncertain-write recovery. Sellers and brokers open My account > My properties. Only active listings are public. Photo changes save immediately; unsaved field edits are separate. Native photo dependencies require rebuilding the development client. The image picker blocks camera/microphone permissions at this stage; remove those blocks and configure calling permissions when integrating LiveKit.
 
+Read [mobile step 4](../docs/16-mobile-maps.md) for MapLibre/OpenFreeMap, map filters/bounds, coordinate selection and optional foreground device location. The default style requires no API key; `EXPO_PUBLIC_MAP_STYLE_URL` optionally selects another public HTTPS style. The external tile provider receives the viewed area. Opening maps does not request GPS permission; nearby/location buttons do. The map shows up to 100 active properties per searched area, with the matching total. Picker confirmation updates the form; save or publish to persist. Manual coordinates remain available. New native map/location modules require rebuilding the client.
+
 The listing contract probe uses real FastAPI routes and an isolated SQLite database without Docker or changes to developer data. From the repository root:
 
 ```powershell
@@ -68,4 +70,4 @@ uv run --project backend python scripts/check_mobile_listings.py
 
 ## Current verification
 
-The foundation development APK was installed and reached sign-in. This property's management stage rebuilt the ARM64 development APK with the native photo modules, but did not install or operate it on the phone. Phone UI checks remain skipped at the user's request. The current suite has 51 passing tests; the isolated FastAPI-to-TypeScript contract probe covers public browsing and authenticated property/photo lifecycle, including buyer/cross-owner rejection. TypeScript/lint/format, Android development bundle export, native assembleDebug and all 20 Expo Doctor checks pass. Real phone and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Writes are not automatically retried: refresh before repeating an uncertain creation/upload. Concurrent form edits follow last-write-wins behavior.
+The foundation development APK was installed and reached sign-in. The current map stage rebuilt the ARM64 development APK with native maps/location, but did not install or operate it on the phone. Phone UI checks remain skipped at the user's request. The suite has 67 passing tests. The isolated FastAPI-to-TypeScript probe covers browsing, owner property/photo lifecycle, GeoJSON filters/bounds/date-line behavior and coordinate persistence. TypeScript/lint/format, Android bundle export, native assembleDebug and all 20 Expo Doctor checks pass. Real phone map rendering/GPS and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Writes are not automatically retried: refresh before repeating an uncertain creation/upload. Concurrent form edits follow last-write-wins behavior. Four moderate npm audit findings remain in the Expo dependency chain; no forced downgrade was applied.

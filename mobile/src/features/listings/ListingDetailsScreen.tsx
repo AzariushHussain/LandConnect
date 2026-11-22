@@ -7,6 +7,7 @@ import { ApiError } from '../../api/client';
 import { formatDecimal } from './filters';
 import { ListingPhoto } from './ListingPhoto';
 import { Listing } from './types';
+import { router } from 'expo-router';
 
 type DetailState =
   | { status: 'loading' }
@@ -66,6 +67,16 @@ export function ListingDetailsScreen({ id }: { id: string }) {
       <Heading
         title={listing.title}
         detail={`${listing.city}, ${listing.state}, ${listing.country}`}
+      />
+      <Action
+        label="View location on map"
+        secondary
+        onPress={() =>
+          router.push({
+            pathname: '/map',
+            params: { latitude: listing.latitude, longitude: listing.longitude },
+          })
+        }
       />
       {listing.images.length ? (
         <FlatList

@@ -1,12 +1,12 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, community browsing and seller/broker property management with private drafts, publishing, sold/archive states and photo uploads.
+A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, community browsing, seller/broker property management, photos, map browsing and confirmed location selection with optional device location.
 
 ## Android application
 
 The application lives in [mobile/](mobile/README.md) and uses TypeScript, Expo Router and Expo development builds. Start the backend with the LAN helper, configure `mobile/.env` from its example, then use `npm ci` and `npm run android -- --device` from `mobile/` with an ADB-authorized Android phone. Subsequent development uses `npm start`. Expo Go is not the supported workflow; later LiveKit integration needs native WebRTC modules.
 
-Read the [first mobile walkthrough](docs/13-mobile-foundation.md) or [PDF guide](docs/LandConnect%20Mobile%20Step%201%20Guide.pdf) for authentication/session flows, and the [mobile listings walkthrough](docs/14-mobile-listings.md) or [step 2 PDF](docs/LandConnect%20Mobile%20Step%202%20Guide.pdf) for browsing, filters and details. The [property management walkthrough](docs/15-mobile-property-management.md) and [step 3 PDF](docs/LandConnect%20Mobile%20Step%203%20Guide.pdf) explain editing, publishing, photos, permissions and verification limits. Map, chat and calling interfaces follow stepwise.
+Read the [first mobile walkthrough](docs/13-mobile-foundation.md) or [PDF guide](docs/LandConnect%20Mobile%20Step%201%20Guide.pdf) for authentication/session flows, and the [mobile listings walkthrough](docs/14-mobile-listings.md) or [step 2 PDF](docs/LandConnect%20Mobile%20Step%202%20Guide.pdf) for browsing, filters and details. The [property management walkthrough](docs/15-mobile-property-management.md) and [step 3 PDF](docs/LandConnect%20Mobile%20Step%203%20Guide.pdf) explain editing, publishing and photos. The [map walkthrough](docs/16-mobile-maps.md) and [step 4 PDF](docs/LandConnect%20Mobile%20Step%204%20Guide.pdf) explain MapLibre/OpenFreeMap, viewport search, location selection, permissions and verification limits. Chat and calling interfaces follow stepwise.
 
 ## Calling architecture
 

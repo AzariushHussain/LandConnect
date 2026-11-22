@@ -113,6 +113,8 @@ def main() -> None:
                     "second": "/listings?limit=2&offset=2",
                     "filtered": "/listings?city=Pune&currency=INR&min_price=1500&max_price=2500",
                     "detail": f"/listings/{first_id}",
+                    "map": "/listings/map?limit=100&offset=0&west=73&south=18&east=74&north=19",
+                    "mapFiltered": "/listings/map?limit=100&offset=0&city=Pune&currency=INR&min_price=1500&west=73&south=18&east=74&north=19",
                 }
                 responses = {name: client.get(path) for name, path in paths.items()}
                 for response in responses.values():
@@ -149,6 +151,10 @@ def main() -> None:
                 managed_path = f"/listings/{managed_id}"
                 payload["ownerId"] = seller_id
                 payload["managedDraft"] = created.json()
+                assert managed_id not in {
+                    feature["id"]
+                    for feature in client.get(paths["map"]).json()["features"]
+                }
                 assert client.get(managed_path).status_code == 404
                 assert (
                     client.get(managed_path, headers=other_headers[1]).status_code
@@ -196,6 +202,10 @@ def main() -> None:
                 )
                 assert published.status_code == 200, published.text
                 payload["managedActive"] = published.json()
+                assert managed_id in {
+                    feature["id"]
+                    for feature in client.get(paths["map"]).json()["features"]
+                }
                 assert client.get(managed_path).status_code == 200
                 assert client.get(image_url).status_code == 200
                 assert (
@@ -233,6 +243,40 @@ def main() -> None:
                 )
                 broker = client.post("/listings", json=draft, headers=other_headers[2])
                 assert broker.status_code == 201
+                # Verify date-line crossing through the same query representation the mobile camera uses.
+                for longitude in ["179.500000", "-179.500000"]:
+                    result = client.post(
+                        "/listings",
+                        json={
+                            **draft,
+                            "title": "Date line plot",
+                            "status": "active",
+                            "latitude": "0.000000",
+                            "longitude": longitude,
+                        },
+                        headers=headers,
+                    )
+                    assert result.status_code == 201
+                crossing = client.get(
+                    "/listings/map?limit=100&offset=0&west=170&south=-10&east=-170&north=10"
+                )
+                empty_map = client.get(
+                    "/listings/map?limit=100&offset=0&west=-10&south=-10&east=10&north=10"
+                )
+                assert crossing.status_code == 200 and empty_map.status_code == 200
+                payload["mapCrossing"], payload["mapEmpty"] = (
+                    crossing.json(),
+                    empty_map.json(),
+                )
+                assert payload["mapCrossing"]["total"] == 2
+                # A confirmed picker value uses the ordinary listing PATCH, never a separate location write.
+                moved = client.patch(
+                    managed_path,
+                    json={"latitude": "-33.868800", "longitude": "151.209300"},
+                    headers=headers,
+                )
+                assert moved.status_code == 200
+                payload["movedProperty"] = moved.json()
             subprocess.run(
                 ["node", "--import", "tsx", "tests/verify-backend-contract.ts"],
                 cwd=ROOT / "mobile",

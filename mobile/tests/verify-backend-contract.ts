@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseListing, parsePage } from '../src/features/listings/types';
 import { parseOwnedListing } from '../src/features/management/api';
+import { parseMapPage } from '../src/features/maps/api';
+import { readCoordinate } from '../src/features/maps/geo';
 
 const data = JSON.parse(readFileSync(0, 'utf8')) as {
   first: unknown;
@@ -15,6 +17,11 @@ const data = JSON.parse(readFileSync(0, 'utf8')) as {
   managedActive: unknown;
   managedArchived: unknown;
   managedSold: unknown;
+  map: unknown;
+  mapFiltered: unknown;
+  mapCrossing: unknown;
+  mapEmpty: unknown;
+  movedProperty: unknown;
 };
 const first = parsePage(data.first, 0, 2);
 const second = parsePage(data.second, 2, 2);
@@ -44,4 +51,26 @@ assert.equal(parseOwnedListing(data.managedSold, data.ownerId).status, 'sold');
 assert.throws(() => parseListing(data.managedSold));
 console.log(
   'PASS: authenticated draft/edit/publish/unpublish/archive/photo routes and owner DTOs satisfy the mobile contract; buyer and cross-owner access are denied.',
+);
+const map = parseMapPage(data.map),
+  mapFiltered = parseMapPage(data.mapFiltered);
+assert.equal(map.total, 3);
+assert.equal(map.features.length, 3);
+assert.deepEqual(
+  map.features.find((feature) => feature.id === data.firstId)!.geometry.coordinates,
+  [73.8567, 18.5204],
+);
+assert.equal(mapFiltered.total, 1);
+assert.equal(mapFiltered.features[0]!.properties.price, '2000.00');
+assert.equal('owner' in map.features[0]!, false);
+const crossing = parseMapPage(data.mapCrossing);
+assert.deepEqual(
+  crossing.features.map((feature) => feature.geometry.coordinates[0]).sort(),
+  [-179.5, 179.5],
+);
+assert.equal(parseMapPage(data.mapEmpty).total, 0);
+const moved = parseOwnedListing(data.movedProperty, data.ownerId);
+assert.deepEqual(readCoordinate(moved.latitude, moved.longitude), [151.2093, -33.8688]);
+console.log(
+  'PASS: real GeoJSON bounds/filter/date-line/empty responses satisfy mobile map parsers; selected location coordinates persist through owner PATCH.',
 );
