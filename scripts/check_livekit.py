@@ -1,5 +1,6 @@
 """Verify the local SFU's authenticated control API and STUN listener, without agents."""
 
+import argparse
 import asyncio
 import secrets
 import socket
@@ -14,8 +15,10 @@ from livekit import api
 from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.core.config import Settings, get_settings
+from start_lan import lan_address
 
 
 def check_stun(host: str) -> None:
@@ -87,8 +90,19 @@ async def check(settings: Settings) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", type=lan_address, help="LAN profile IPv4 address")
+    args = parser.parse_args()
     try:
-        asyncio.run(check(get_settings()))
+        settings = get_settings()
+        if args.host:
+            settings = settings.model_copy(
+                update={
+                    "livekit_internal_url": f"http://{args.host}:7880",
+                    "livekit_public_url": f"ws://{args.host}:7880",
+                }
+            )
+        asyncio.run(check(settings))
     except (
         aiohttp.ClientError,
         api.TwirpError,
@@ -107,7 +121,7 @@ def main() -> None:
         "PASS: room create/list/delete; invalid credentials rejected; STUN/UDP and RTC/TCP reachable."
     )
     print(
-        "Only the temporary check room was removed. Audio/video and TURN media are not tested yet."
+        "Only the temporary check room was removed. Use check_media.py for audio/video and TURN media."
     )
 
 

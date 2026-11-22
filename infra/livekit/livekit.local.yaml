@@ -8,7 +8,8 @@ rtc:
   tcp_port: 7881
   udp_port: 7882
   use_external_ip: false
-  enable_loopback_candidate: true
+  # Docker NAT must advertise the reachable host address, without duplicate loopback candidates.
+  enable_loopback_candidate: false
 turn:
   enabled: true
   bind_addresses: ["0.0.0.0"]

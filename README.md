@@ -63,7 +63,19 @@ All LiveKit mappings bind to `LIVEKIT_BIND_IP`, default `127.0.0.1`. Keep RTC an
 
 For a host process, `LIVEKIT_INTERNAL_URL` defaults to `http://localhost:7880`; Compose overrides it to `http://livekit:7880` for the API container. `LIVEKIT_PUBLIC_URL` defaults to `ws://localhost:7880`, and `LIVEKIT_NODE_IP` defaults to `127.0.0.1`. Public URL and advertised media IP are different settings and both must be reachable by clients. An existing `.env` remains valid with the default bind IP.
 
-For a physical phone on the same trusted Wi-Fi, set `LIVEKIT_BIND_IP` and `LIVEKIT_NODE_IP` to the computer's LAN IPv4 address, and set `LIVEKIT_PUBLIC_URL=ws://<LAN-IP>:7880` and host `LIVEKIT_INTERNAL_URL=http://<LAN-IP>:7880`. Recreate the service with `docker compose up -d --force-recreate livekit` and permit the listed ports in the host firewall. The phone's `localhost` means the phone itself. These changes expose the SFU only; the API remains bound to loopback until mobile access is configured during client integration.
+For an Android phone on the same trusted Wi-Fi, start the explicit LAN profile (Docker Compose 2.24.4+):
+
+```powershell
+uv run --project backend python scripts/start_lan.py --host 192.168.29.22
+uv run --project backend python scripts/check_livekit.py --host 192.168.29.22
+uv run --project backend --with "livekit==1.3.0" python scripts/check_media.py --host 192.168.29.22 --participants 3 --relay
+```
+
+Replace the example with this computer's actual private Wi-Fi IPv4 address. The helper checks that it belongs to this computer, validates Compose without printing secrets, starts the stack and waits for health. API/Swagger is then `http://<LAN-IP>:8000/docs` and LiveKit signaling is `ws://<LAN-IP>:7880`. Open `http://<LAN-IP>:8000/health/ready` from the phone as a first check. A phone's localhost means the phone, not the computer.
+
+`compose.lan.yaml` replaces API/LiveKit bindings with the selected interface and advertises that same IP in room-token URLs and ICE. PostgreSQL/Redis remain on loopback. The existing `.env` is preserved. Keep the same profile on subsequent starts by using the helper; plain `docker compose up -d` returns to the base loopback configuration. The profile is local HTTP/WS development, not public hosting.
+
+Loopback ICE candidate gathering is now disabled in `infra/livekit/livekit.local.yaml`. This resolved the reproducible Windows-host media timeout when advertising a LAN IP through Docker NAT. Native two-way and three-way synthetic audio/video, including relay-only TURN, now pass on the Windows host. See the [connectivity walkthrough](docs/12-lan-connectivity.md) and [PDF guide](docs/LandConnect%20LAN%20Connectivity%20Guide.pdf).
 
 This is a single-node local setup. TURN permits local/private peers and has 50 relay ports; it has not been load-tested. Public deployment needs reachable media addresses, appropriate network policy, HTTPS/WSS certificates and TURN/TLS for restrictive networks. The server may warn about Docker's UDP buffer size; tune that on the deployment host when testing production load. Rooms must be created explicitly by an authenticated server API because `room.auto_create` is disabled. This is infrastructure preparation, not the application's invitation/permission enforcement.
 
@@ -249,9 +261,9 @@ Without `TEST_POSTGRES_URL`, fifteen PostgreSQL integration tests are skipped. F
 uv run --directory backend python -c "import os,pytest; from app.core.config import get_settings; s=get_settings(); os.environ['TEST_POSTGRES_URL']=s.database_url; os.environ['TEST_REDIS_URL']=s.redis_url; raise SystemExit(pytest.main(['-q']))"
 ```
 
-Integration tests create unique temporary schemas and remove them after use. They check authentication, listings, migration preservation/rollback, concurrent messages and opposite-direction calls, Redis cross-instance fan-out, and background call timeout notifications. Redis tests use unique prefixes and kill only their own subscriber connection. The database user needs permission to create schemas. Current validation: **200 tests passed**. Calling tests also check state permissions, token grants, privacy termination, transaction rollback, cleanup retry and room reconciliation. The installed TestClient emits one upstream HTTPX deprecation warning. Real media/control checks and their current limitations are described in the calling guide.
+Integration tests create unique temporary schemas and remove them after use. They check authentication, listings, migration preservation/rollback, concurrent messages and opposite-direction calls, Redis cross-instance fan-out, and background call timeout notifications. Redis tests use unique prefixes and kill only their own subscriber connection. The database user needs permission to create schemas. Current validation: **209 tests passed**. Calling tests also check state permissions, token grants, privacy termination, transaction rollback, cleanup retry and room reconciliation. The installed TestClient emits one upstream HTTPX deprecation warning. Real media/control checks and their current limitations are described in the calling guide.
 
-Additional native RTC probes exchanged synthetic audio/video in both directions inside Docker using default ICE and relay-only TURN, and API hangup disconnected both peers. Windows-host probes timed out even with a temporary LAN advertisement; host/device media routing remains unresolved. Normal loopback configuration was restored after these isolated tests. See the calling guide for the exact verification boundaries.
+Native RTC probes passed inside Docker and now on the Windows host through the LAN profile. Two-client and three-client synthetic audio/video passed, including relay-only TURN; room deletion disconnected every client. Earlier Windows timeouts were resolved by disabling loopback candidate gathering with a LAN advertisement. Physical-phone media and camera/microphone checks remain pending. The connectivity guide distinguishes listener checks, synthetic transport checks and real-device validation.
 
 Meeting verification adds a waiting-join/removal PostgreSQL race, cross-instance Redis invitations/removal, legacy membership preservation, consent/owner permissions, cleanup retry and privacy tests. Separate Docker-native probes passed three-client audio/video in all six directions, both with default ICE and relay-only TURN. Retained tokens could not rejoin the retired room after removal; surviving members rejoined a new room, and owner end disconnected everyone. These are separate media scenarios, not additional pytest cases or a physical-device demonstration.
 
@@ -285,6 +297,8 @@ Meeting verification adds a waiting-join/removal PostgreSQL race, cross-instance
 - `backend/Dockerfile` and `compose.yaml`: API image, PostgreSQL, Redis and migration startup.
 - `infra/livekit/livekit.local.yaml`: local SFU, ICE and TURN configuration; credentials come from Compose.
 - `scripts/check_livekit.py`: authenticated room lifecycle and local connectivity smoke check.
+- `scripts/start_lan.py` and `compose.lan.yaml`: explicit private-interface API/media access without modifying `.env`.
+- `scripts/check_media.py`: native synthetic audio/video probe for two or three clients, optionally forcing TURN.
 - [Step 1 guide](docs/LandConnect%20Backend%20Step%201%20Guide.pdf): initial scaffold explanation and full assignment roadmap.
 - [Step 2 explanation](docs/02-backend-foundation.md) and [PDF guide](docs/LandConnect%20Backend%20Step%202%20Guide.pdf): foundation checkpoint before the directory refactor.
 - [Backend structure explanation](docs/03-backend-structure.md): current directory tree, imports and the rules for adding models and future features.
@@ -305,4 +319,4 @@ Git is initialized at the project root on `main`. Keep `uv.lock` in Git; `.env` 
 docker compose down
 ```
 
-PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. The next checkpoint is **client integration and host/device media connectivity**, after you say **next**. Physical-device audio/video demonstrations are still required.
+PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. The next checkpoint is **React Native Android client integration**, after you say **next**. Physical-device audio/video demonstrations are still required.

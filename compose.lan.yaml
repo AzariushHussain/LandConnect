@@ -1,0 +1,17 @@
+# Local trusted-LAN development. LANDCONNECT_LAN_IP must be an address on this computer.
+# !override requires Docker Compose 2.24.4 or newer.
+services:
+  livekit:
+    environment:
+      NODE_IP: ${LANDCONNECT_LAN_IP:?Use scripts/start_lan.py --host YOUR_LAN_IPV4}
+    ports: !override
+      - "${LANDCONNECT_LAN_IP}:7880:7880/tcp"
+      - "${LANDCONNECT_LAN_IP}:7881:7881/tcp"
+      - "${LANDCONNECT_LAN_IP}:7882:7882/udp"
+      - "${LANDCONNECT_LAN_IP}:3478:3478/udp"
+      - "${LANDCONNECT_LAN_IP}:30000-30049:30000-30049/udp"
+  api:
+    environment:
+      LIVEKIT_PUBLIC_URL: ws://${LANDCONNECT_LAN_IP}:7880
+    ports: !override
+      - "${LANDCONNECT_LAN_IP}:${API_PORT:-8000}:8000"
