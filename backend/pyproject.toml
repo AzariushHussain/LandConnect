@@ -28,6 +28,7 @@ pythonpath = ["."]
 markers = [
   "postgres: integration tests that create and remove isolated PostgreSQL schemas",
   "realtime: integration tests requiring real Redis and PostgreSQL",
+  "calling: integration tests running background call maintenance",
 ]
 
 [tool.ruff]

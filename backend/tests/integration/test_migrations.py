@@ -43,8 +43,64 @@ def test_migrations_match_models_and_round_trip(migrated_database):
     assert set(inspect(db).get_table_names()) == {"alembic_version"}
     command.upgrade(config, "head")
     with db.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002_chat"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0004_meetings"
     assert set(inspect(db).get_table_names()) == expected_tables
+
+
+def test_meeting_migration_backfills_owner_and_preserves_old_members(migrated_database):
+    engine, config = migrated_database
+    command.downgrade(config, "0003_calls")
+    owner, member, mid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    with engine.begin() as connection:
+        for user_id in (owner, member):
+            connection.execute(
+                insert(User).values(
+                    id=user_id,
+                    email=str(user_id) + "@example.com",
+                    display_name="Legacy",
+                    role=Role.buyer,
+                    password_hash="unused",
+                )
+            )
+        connection.execute(
+            text(
+                "INSERT INTO meetings (id, owner_id, title, created_at) "
+                "VALUES (:id, :owner, 'Legacy', CURRENT_TIMESTAMP)"
+            ),
+            {"id": mid, "owner": owner},
+        )
+        connection.execute(
+            text("INSERT INTO meeting_members (meeting_id, user_id) VALUES (:id, :member)"),
+            {"id": mid, "member": member},
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        members = connection.execute(
+            text("SELECT user_id, status FROM meeting_members WHERE meeting_id=:id"), {"id": mid}
+        ).all()
+        assert set(members) == {(owner, "accepted"), (member, "accepted")}
+        assert (
+            connection.scalar(text("SELECT room_version FROM meetings WHERE id=:id"), {"id": mid})
+            == 1
+        )
+    with pytest.raises(RuntimeError, match="open meetings"):
+        command.downgrade(config, "0003_calls")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE meetings SET ended_at=CURRENT_TIMESTAMP, "
+                "room_closed_at=CURRENT_TIMESTAMP WHERE id=:id"
+            ),
+            {"id": mid},
+        )
+    command.downgrade(config, "0003_calls")
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(text("SELECT title FROM meetings WHERE id=:id"), {"id": mid})
+            == "Legacy"
+        )
+    command.upgrade(config, "head")
+    command.check(config)
 
 
 def test_database_rejects_invalid_marketplace_data(migrated_database):
@@ -153,4 +209,56 @@ def test_chat_migration_preserves_old_direct_history_and_guards_group_downgrade(
         session.commit()
     with pytest.raises(RuntimeError, match="group conversations"):
         command.downgrade(config, "0001_initial")
+    command.check(config)
+
+
+def test_call_migration_preserves_legacy_calls_and_blocks_unsafe_downgrade(migrated_database):
+    db, config = migrated_database
+    command.downgrade(config, "0002_chat")
+    a, b, call_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    with db.begin() as connection:
+        for user_id, email in ((a, "a@example.com"), (b, "b@example.com")):
+            connection.execute(
+                insert(User).values(
+                    id=user_id,
+                    email=email,
+                    display_name="Legacy",
+                    role=Role.buyer,
+                    password_hash="unused",
+                )
+            )
+        connection.execute(
+            text(
+                "INSERT INTO calls (id, caller_id, callee_id, kind, status, "
+                "created_at, expires_at) "
+                "VALUES (:id, :a, :b, 'audio', 'accepted', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {"id": call_id, "a": a, "b": b},
+        )
+    command.upgrade(config, "head")
+    with db.connect() as connection:
+        record = (
+            connection.execute(text("SELECT * FROM calls WHERE id=:id"), {"id": call_id})
+            .mappings()
+            .one()
+        )
+        assert record["status"] == "accepted" and record["client_id"] is None
+        assert record["accepted_at"] == record["created_at"]
+    with pytest.raises(RuntimeError, match="active calls"):
+        command.downgrade(config, "0002_chat")
+    with db.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE calls SET status='ended', ended_at=CURRENT_TIMESTAMP, "
+                "room_closed_at=CURRENT_TIMESTAMP WHERE id=:id"
+            ),
+            {"id": call_id},
+        )
+    command.downgrade(config, "0002_chat")
+    with db.connect() as connection:
+        assert (
+            connection.scalar(text("SELECT status FROM calls WHERE id=:id"), {"id": call_id})
+            == "ended"
+        )
+    command.upgrade(config, "head")
     command.check(config)

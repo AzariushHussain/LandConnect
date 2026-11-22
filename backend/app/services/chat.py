@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ChatConflict, ChatForbidden, ChatInvalid, ChatNotFound
+from app.core.errors import Conflict, Forbidden, InvalidRequest, NotFound
 from app.models import (
     Block,
     ChatOutbox,
@@ -22,39 +22,18 @@ from app.schemas.chat import (
     MessagePage,
     PrivacyUpdate,
 )
+from app.services.calls import terminate_for_privacy
+from app.services.meetings import revoke_for_privacy
+from app.services.privacy import any_blocked, lock_users
 
 MAX_GROUP_MEMBERS = 50
-
-
-def lock_users(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, User]:
-    rows = db.scalars(
-        select(User)
-        .where(User.id.in_(ids))
-        .order_by(User.id)
-        .with_for_update(of=User)
-        .execution_options(populate_existing=True)
-    ).all()
-    if len(rows) != len(ids):
-        raise ChatNotFound("User not found")
-    return {row.id: row for row in rows}
-
-
-def any_blocked(db: Session, ids: set[uuid.UUID]) -> bool:
-    return (
-        db.scalar(
-            select(Block.blocker_id)
-            .where(Block.blocker_id.in_(ids), Block.blocked_id.in_(ids))
-            .limit(1)
-        )
-        is not None
-    )
 
 
 def invitation_allowed(db: Session, people: dict[uuid.UUID, User], invited: set[uuid.UUID]) -> None:
     if any(not people[user_id].allow_messages for user_id in invited) or any_blocked(
         db, set(people)
     ):
-        raise ChatForbidden("Messaging or invitation not permitted")
+        raise Forbidden("Messaging or invitation not permitted")
 
 
 def get_conversation(
@@ -68,7 +47,7 @@ def get_conversation(
         .execution_options(populate_existing=True)
     )
     if conversation is None:
-        raise ChatNotFound("Conversation not found")
+        raise NotFound("Conversation not found")
     # A removal may have committed while this query waited for the parent lock.
     # Recheck with a fresh READ COMMITTED snapshot while holding that lock.
     if (
@@ -80,7 +59,7 @@ def get_conversation(
         )
         is None
     ):
-        raise ChatNotFound("Conversation not found")
+        raise NotFound("Conversation not found")
     return conversation
 
 
@@ -131,7 +110,7 @@ def emit(
 
 def create_direct(db: Session, actor: uuid.UUID, recipient: uuid.UUID) -> tuple[Conversation, bool]:
     if actor == recipient:
-        raise ChatInvalid("Choose another account")
+        raise InvalidRequest("Choose another account")
     people = lock_users(db, {actor, recipient})
     invitation_allowed(db, people, {recipient})
     a, b = sorted((actor, recipient))
@@ -152,7 +131,7 @@ def create_direct(db: Session, actor: uuid.UUID, recipient: uuid.UUID) -> tuple[
 
 def create_group(db: Session, actor: uuid.UUID, data: GroupCreate) -> Conversation:
     if actor in data.member_ids:
-        raise ChatInvalid("The owner is already a member")
+        raise InvalidRequest("The owner is already a member")
     invited = set(data.member_ids)
     people = lock_users(db, invited | {actor})
     invitation_allowed(db, people, invited)
@@ -173,12 +152,12 @@ def create_group(db: Session, actor: uuid.UUID, data: GroupCreate) -> Conversati
 
 def group_admin(conversation: Conversation, actor: uuid.UUID, *, owner_only=False) -> None:
     if conversation.kind != ConversationKind.group:
-        raise ChatConflict("Direct conversation participants cannot be changed")
+        raise Conflict("Direct conversation participants cannot be changed")
     member = next((m for m in conversation.members if m.user_id == actor), None)
     if conversation.owner_id != actor and (
         owner_only or member is None or member.role != MemberRole.admin
     ):
-        raise ChatForbidden("Group permission required")
+        raise Forbidden("Group permission required")
 
 
 def rename_group(
@@ -202,7 +181,7 @@ def add_member(
     if user_id in current:
         return conversation
     if len(current) >= MAX_GROUP_MEMBERS:
-        raise ChatConflict("A group can have at most 50 members")
+        raise Conflict("A group can have at most 50 members")
     people = lock_users(db, current | {user_id})
     invitation_allowed(db, people, {user_id})
     conversation.members.append(ConversationMember(user_id=user_id))
@@ -218,10 +197,10 @@ def update_member(
     conversation = get_conversation(db, conversation_id, actor, write=True)
     group_admin(conversation, actor, owner_only=True)
     if user_id == conversation.owner_id:
-        raise ChatConflict("Transfer ownership before changing the owner's role")
+        raise Conflict("Transfer ownership before changing the owner's role")
     member = next((m for m in conversation.members if m.user_id == user_id), None)
     if member is None:
-        raise ChatNotFound("Member not found")
+        raise NotFound("Member not found")
     member.role = role
     emit(db, conversation, actor)
     db.commit()
@@ -236,7 +215,7 @@ def transfer_owner(
     group_admin(conversation, actor, owner_only=True)
     member = next((m for m in conversation.members if m.user_id == user_id), None)
     if member is None:
-        raise ChatNotFound("Member not found")
+        raise NotFound("Member not found")
     conversation.owner_id = user_id
     member.role = MemberRole.admin
     emit(db, conversation, actor)
@@ -250,16 +229,16 @@ def remove_member(
 ) -> None:
     conversation = get_conversation(db, conversation_id, actor, write=True)
     if conversation.kind != ConversationKind.group:
-        raise ChatConflict("Direct conversation participants cannot be changed")
+        raise Conflict("Direct conversation participants cannot be changed")
     if user_id == conversation.owner_id:
-        raise ChatConflict("The owner must transfer ownership before leaving")
+        raise Conflict("The owner must transfer ownership before leaving")
     member = next((m for m in conversation.members if m.user_id == user_id), None)
     if member is None:
-        raise ChatNotFound("Member not found")
+        raise NotFound("Member not found")
     if actor != user_id:
         group_admin(conversation, actor)
         if member.role == MemberRole.admin and actor != conversation.owner_id:
-            raise ChatForbidden("Only the owner can remove an admin")
+            raise Forbidden("Only the owner can remove an admin")
     conversation.members.remove(member)
     emit(db, conversation, actor, event_type="membership.removed", removed=user_id)
     db.commit()
@@ -279,7 +258,7 @@ def send_message(
     )
     if existing:
         if existing.body != data.body:
-            raise ChatConflict("This client_id already belongs to a different message")
+            raise Conflict("This client_id already belongs to a different message")
         return existing, False
     if conversation.kind == ConversationKind.direct:
         recipient = (
@@ -327,6 +306,9 @@ def update_privacy(db: Session, actor: uuid.UUID, data: PrivacyUpdate) -> User:
     user = lock_users(db, {actor})[actor]
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
+    if data.allow_calls is False:
+        terminate_for_privacy(db, actor)
+        revoke_for_privacy(db, actor)
     db.commit()
     db.refresh(user)
     return user
@@ -334,10 +316,12 @@ def update_privacy(db: Session, actor: uuid.UUID, data: PrivacyUpdate) -> User:
 
 def block_user(db: Session, actor: uuid.UUID, target: uuid.UUID) -> None:
     if actor == target:
-        raise ChatInvalid("You cannot block yourself")
+        raise InvalidRequest("You cannot block yourself")
     lock_users(db, {actor, target})
     if db.get(Block, (actor, target)) is None:
         db.add(Block(blocker_id=actor, blocked_id=target))
+        terminate_for_privacy(db, actor, target)
+        revoke_for_privacy(db, actor, target)
         db.commit()
 
 

@@ -17,6 +17,13 @@ class MemberRole(StrEnum):
     admin = "admin"
 
 
+class MeetingMemberStatus(StrEnum):
+    invited = "invited"
+    accepted = "accepted"
+    declined = "declined"
+    removed = "removed"
+
+
 class ListingStatus(StrEnum):
     draft = "draft"
     active = "active"

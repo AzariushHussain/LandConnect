@@ -17,6 +17,13 @@ get_settings.cache_clear()
 
 @pytest.fixture(autouse=True)
 def isolate_realtime(request, monkeypatch):
+    from app.services.call_worker import CallWorker
+
+    async def no_calls(worker):
+        pass
+
+    if not request.node.get_closest_marker("calling"):
+        monkeypatch.setattr(CallWorker, "start", no_calls)
     if request.node.get_closest_marker("realtime"):
         return
     from app.services.realtime import ChatHub

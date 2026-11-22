@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from app.core.errors import ChatNotFound
+from app.core.errors import NotFound
 from app.models import Role, User
 from app.schemas.chat import GroupCreate, MessageCreate
 from app.services import chat
@@ -45,7 +45,7 @@ def test_waiting_send_rechecks_membership_after_removal_commits(group):
     def send():
         with factory() as db:
             pid_queue.put(db.scalar(text("SELECT pg_backend_pid()")))
-            with pytest.raises(ChatNotFound):
+            with pytest.raises(NotFound):
                 chat.send_message(
                     db, conversation, member, MessageCreate(client_id=uuid.uuid4(), body="late")
                 )

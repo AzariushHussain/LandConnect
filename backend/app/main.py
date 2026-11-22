@@ -5,12 +5,14 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.errors import chat_error, request_validation_error
+from app.api.errors import request_validation_error, service_error
 from app.api.middleware import RequestSizeLimitMiddleware
 from app.api.router import router
 from app.core.config import get_settings
-from app.core.errors import ChatError
+from app.core.errors import ServiceError
 from app.db.session import SessionLocal, engine, get_db
+from app.services.call_worker import CallWorker
+from app.services.livekit import LiveKitRooms
 from app.services.realtime import ChatHub
 
 
@@ -21,10 +23,14 @@ def create_app(session_factory=SessionLocal) -> FastAPI:
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         hub = ChatHub(settings, session_factory)
         application.state.chat = hub
+        calls = CallWorker(session_factory, LiveKitRooms(settings))
+        application.state.calls = calls
         await hub.start()
+        await calls.start()
         try:
             yield
         finally:
+            await calls.close()
             await hub.close()
             engine.dispose()
 
@@ -42,7 +48,7 @@ def create_app(session_factory=SessionLocal) -> FastAPI:
         allow_headers=["Authorization", "Content-Type"],
     )
     application.add_exception_handler(RequestValidationError, request_validation_error)
-    application.add_exception_handler(ChatError, chat_error)
+    application.add_exception_handler(ServiceError, service_error)
     application.include_router(router)
     if session_factory is not SessionLocal:
 

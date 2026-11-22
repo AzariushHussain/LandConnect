@@ -12,9 +12,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 from app.models import User
-from app.schemas.chat import ChatEvent
+from app.schemas.call import CallEvent
+from app.schemas.events import RealtimeEvent, event_adapter
+from app.schemas.meeting import MeetingEvent
+from app.services.calls import may_notify as may_notify_call
 from app.services.chat import may_notify
 from app.services.chat_outbox import flush_outbox
+from app.services.meetings import may_notify as may_notify_meeting
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +77,7 @@ class ChatHub:
             for queue in channels:
                 self._disconnect(queue)
 
-    def _enqueue(self, user_id: uuid.UUID, event: ChatEvent) -> None:
+    def _enqueue(self, user_id: uuid.UUID, event: RealtimeEvent) -> None:
         for queue in self.sockets.get(user_id, ()):
             try:
                 queue.put_nowait(event)
@@ -97,7 +101,7 @@ class ChatHub:
                         elif message and message["type"] == "pmessage":
                             try:
                                 user_id = uuid.UUID(message["channel"][len(prefix) :])
-                                event = ChatEvent.model_validate_json(message["data"])
+                                event = event_adapter.validate_json(message["data"])
                             except (ValueError, ValidationError):
                                 logger.warning("Ignored a malformed chat broker event")
                             else:
@@ -130,6 +134,10 @@ class ChatHub:
         with self.session_factory() as db:
             return db.get(User, user_id) is not None
 
-    def authorized_event(self, user_id: uuid.UUID, event: ChatEvent) -> bool:
+    def authorized_event(self, user_id: uuid.UUID, event: RealtimeEvent) -> bool:
         with self.session_factory() as db:
+            if isinstance(event, MeetingEvent):
+                return may_notify_meeting(db, user_id, event)
+            if isinstance(event, CallEvent):
+                return may_notify_call(db, user_id, event)
             return may_notify(db, user_id, event)

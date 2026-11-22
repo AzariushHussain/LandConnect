@@ -2,7 +2,7 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.core.errors import ChatError
+from app.core.errors import ServiceError
 
 
 async def request_validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -13,7 +13,7 @@ async def request_validation_error(_request: Request, exc: RequestValidationErro
     return JSONResponse(status_code=422, content={"detail": errors})
 
 
-async def chat_error(_request: Request, exc: ChatError) -> JSONResponse:
+async def service_error(_request: Request, exc: ServiceError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": str(exc)},

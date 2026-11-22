@@ -1,18 +1,22 @@
-class ChatError(Exception):
+class ServiceError(Exception):
     status_code = 400
 
 
-class ChatNotFound(ChatError):
+class NotFound(ServiceError):
     status_code = 404
 
 
-class ChatForbidden(ChatError):
+class Forbidden(ServiceError):
     status_code = 403
 
 
-class ChatConflict(ChatError):
+class Conflict(ServiceError):
     status_code = 409
 
 
-class ChatInvalid(ChatError):
+class InvalidRequest(ServiceError):
     status_code = 422
+
+
+class Unavailable(ServiceError):
+    status_code = 503

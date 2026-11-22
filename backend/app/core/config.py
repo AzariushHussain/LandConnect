@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     livekit_api_secret: str = Field(min_length=32)
     livekit_internal_url: str = "http://localhost:7880"
     livekit_public_url: str = "ws://localhost:7880"
+    call_ring_seconds: int = Field(default=45, ge=10, le=120)
+    call_token_seconds: int = Field(default=120, ge=30, le=300)
 
 
 @lru_cache

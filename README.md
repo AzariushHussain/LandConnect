@@ -1,12 +1,12 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The current checkpoint includes **authentication, property listings, images, maps, direct/group messaging, privacy controls and self-hosted SFU infrastructure**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. Call lifecycle APIs and the calling interface come next.
+A land marketplace mobile application, built in stages. The current checkpoint includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. Mobile integration and device connectivity come next.
 
 ## Calling architecture
 
 The agreed media architecture is **WebRTC through a self-hosted LiveKit SFU**, for both one-to-one calls and invite-only group meeting rooms. Mobile clients publish audio/video tracks to the SFU, which forwards them to the other participants. FastAPI owns authentication, invitations, membership checks, call state and short-lived room access tokens. LiveKit owns media transport and its WebRTC signaling.
 
-The `livekit-api` dependency supplies server-side room management and token generation. **LiveKit Server v1.13.11 now runs in Compose**, with the same credentials as the backend and local TURN/UDP support. We use its WebRTC media infrastructure; no Agents framework, AI models or LiveKit Cloud subscription are involved. Calling endpoints and client audio/video testing are still pending. See the [setup walkthrough](docs/09-livekit-setup.md), [setup PDF](docs/LandConnect%20LiveKit%20Setup%20Guide.pdf) and earlier [SFU architecture decision](docs/04-sfu-architecture.md).
+The `livekit-api` dependency supplies server-side room management and token generation. **LiveKit Server v1.13.11 runs in Compose**, with the same credentials as the backend and local TURN/UDP support. No Agents framework, AI models or LiveKit Cloud subscription are involved. One-to-one calling now includes lifecycle APIs, scoped room tokens, Redis notifications, timeout handling and durable media cleanup. See the [calling guide](docs/10-calling.md), [setup walkthrough](docs/09-livekit-setup.md) and earlier [SFU architecture decision](docs/04-sfu-architecture.md). Physical-device media testing remains part of client integration.
 
 ## Chat architecture
 
@@ -57,7 +57,7 @@ The check creates a uniquely named temporary room, lists it, deletes it and veri
 | `7881/TCP` | ICE/TCP media fallback |
 | `7882/UDP` | Multiplexed WebRTC media |
 | `3478/UDP` | Embedded TURN/UDP, also serving STUN |
-| `30000–30049/UDP` | Bounded TURN relay allocation range for local testing |
+| `30000â€“30049/UDP` | Bounded TURN relay allocation range for local testing |
 
 All LiveKit mappings bind to `LIVEKIT_BIND_IP`, default `127.0.0.1`. Keep RTC and TURN port numbers unchanged in this local configuration: clients receive those advertised port numbers. `infra/livekit/livekit.local.yaml` contains the non-secret server settings; Compose injects `LIVEKIT_KEYS` from the existing key/secret and supplies the advertised `NODE_IP`. There is no hardcoded development secret or `--dev` mode. Preserve the generated URL-safe credentials, and do not publish expanded Compose configuration because it contains secrets.
 
@@ -127,7 +127,7 @@ All REST endpoints below require a bearer token. Conversation responses contain 
 | Endpoint | Behavior |
 | --- | --- |
 | `POST /conversations/direct` | `{recipient_id}`; creates or returns the pair's unique direct conversation |
-| `POST /conversations/groups` | `{name, member_ids}`; owner plus 1–49 other members |
+| `POST /conversations/groups` | `{name, member_ids}`; owner plus 1â€“49 other members |
 | `GET /conversations` | Current memberships, with limit/offset pagination |
 | `GET /conversations/{id}` | Current member reads conversation details |
 | `PATCH /conversations/{id}` | Owner/admin renames a group with `{name}` |
@@ -149,13 +149,71 @@ History defaults to the latest 50 messages, returned in ascending ID order. Use 
 
 Group owner/admin roles are separate from buyer/seller/broker roles. Owners cannot leave until transferring ownership. Direct participants are fixed. Membership checks also guard realtime hints. Missing conversations and conversations unavailable to the caller return `404`.
 
-Blocks in either direction and a recipient's `allow_messages=false` prevent direct sends and new invitations. A new group or member addition cannot introduce a blocked pair. An existing shared group remains shared if someone later blocks another member or disables incoming messages: leave the group to stop sharing it. Changing these settings does not erase existing direct history. `allow_calls` is stored now for the upcoming calling stage.
+Blocks in either direction and a recipient's `allow_messages=false` prevent direct sends and new invitations. A new group or member addition cannot introduce a blocked pair. An existing shared group remains shared if someone later blocks another member or disables incoming messages: leave the group to stop sharing it. Changing these settings does not erase existing direct history. Call privacy is enforced as described below.
 
 Connect a WebSocket to `ws://localhost:8000/ws/chat`. Within five seconds, send `{"type":"auth","token":"<access_token>"}` as the first frame. The server replies `{"type":"ready","user_id":"..."}`. Tokens never appear in the URL. Browser origins must be in `CORS_ORIGINS`; native clients may omit Origin. Send `{"type":"pong"}` when the server sends `{"type":"ping"}`. Message writes stay on REST.
 
 Notifications include `event_id`, `type`, `conversation_id`, `actor_id` and optional `message_id`/`target_user_id`; they omit text. Types are `message.created`, `conversation.updated` and `membership.removed`. Deduplicate by `event_id`, fetch authorized REST state, and periodically reconcile history even while connected. Pub/Sub is at-most-once; outbox retry can produce duplicates and events can arrive out of order. A notification is not a delivery/read receipt. On disconnect, reconnect and recover REST history. Close `1013` asks for retry/recovery; `1008` requires checking authentication/protocol, including expired tokens. Each user has at most five sockets per API process; slow consumers are disconnected when their bounded queue fills.
 
 The outbox commits with the message, then API background relays claim pending rows with `FOR UPDATE SKIP LOCKED`, publish to server-derived per-user Redis channels, and record publication. A failed broker publish leaves the row pending. Successful publication does not mean a client received it. Published outbox rows currently remain stored; add monitored retention/cleanup before sustained production use. Push notifications, typing/presence, delivery/read receipts and end-to-end encryption are later work.
+
+## One-to-one audio/video calls
+
+All routes require an application bearer token. Only the two participants can read the call or act on it; outsiders receive `404`. Responses contain public profiles without private contact details, and use `Cache-Control: no-store`.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /calls` | `{client_id: "UUID", callee_id: "UUID", kind: "audio"}` or `"video"`; initiates ringing |
+| `GET /calls` | Paginated call history; optional `status` and `direction=incoming/outgoing` |
+| `GET /calls/{id}` | Current state; also persists an overdue ringing timeout |
+| `POST /calls/{id}/accept` | Callee accepts; creates a two-participant SFU room |
+| `POST /calls/{id}/reject` | Callee rejects a ringing call |
+| `POST /calls/{id}/cancel` | Caller cancels a ringing call |
+| `POST /calls/{id}/end` | Either participant ends an accepted call and requests room closure |
+| `POST /calls/{id}/token` | Either participant obtains room access after acceptance and fresh privacy checks |
+
+Reuse the initiating `client_id` for a retry: matching data returns the existing call with `200`; a new call returns `201`. Different data with the same UUID returns `409`. Each account may have one ringing or accepted call at a time. Repeating the same successful lifecycle action is idempotent; incompatible transitions return `409` and wrong participant roles return `403`.
+
+Call states are `ringing -> accepted -> ended`, or `ringing -> rejected/cancelled/missed`. `CALL_RING_SECONDS` defaults to 45 (10â€“120 allowed). A per-process maintenance worker persists missed calls independently of clients; request-time checks enforce the exact deadline before acceptance. Acceptance is application consent, not proof that audio/video is connected. Clients must show SDK connection state separately.
+
+Blocks in either direction and the callee's `allow_calls=false` prevent initiation, acceptance and room-token access. Disabling incoming calls still permits that user to place outgoing calls. Creating a block cancels an existing ringing call between the accounts or ends an accepted call. Disabling incoming calls does the same for the user's incoming calls. These state changes and their notifications commit with the privacy update; the worker closes media rooms and retries failures.
+
+Token responses contain `url`, `room`, `token` and `expires_in`. Default TTL is 120 seconds, configurable with `CALL_TOKEN_SECONDS` (30â€“300). Tokens identify one participant, allow only the specific room, deny room administration/creation, data publishing and agent-session management, and permit microphone publishing for audio or microphone/camera for video. They grant no screen-sharing or recording capability. Tokens and private profiles never appear in broker events. Expiry controls joining; ending existing media requires server room closure. Clients should request a fresh token when reconnecting, subject to the current call state.
+
+The existing `/ws/chat` authenticated socket now also carries `call.incoming`, `call.accepted`, `call.rejected`, `call.cancelled`, `call.missed` and `call.ended`. Payloads contain `event_id`, `call_id` and optional `actor_id`. Deduplicate hints and fetch REST state; never infer current state from notification order. Recover incoming calls with `GET /calls?direction=incoming&status=ringing` after reconnect, and poll the current call if a hint is missed. Offline mobile push notifications remain later work.
+
+Ending commits the terminal state and durable cleanup intent before contacting LiveKit. A successful close records `room_closed_at`; otherwise `media_cleanup_pending=true` remains visible and a worker retries. Media may continue until LiveKit acknowledges closure during an outage. Token requests cannot recreate rooms. Keep `room.auto_create=false` in the server configuration so old tokens cannot recreate deleted rooms.
+
+The worker gives accepted calls 45 seconds to join. After that, it checks room identity and participant count in bounded batches. A missing/replaced room or fewer than two participants ends the call and closes remaining media; SFU outages leave state unchanged until a check can succeed. This polling reconciliation also handles stale state after an SFU restart, without requiring webhooks. Clients should call `/end` for immediate hangup rather than waiting for reconciliation.
+
+## Invite-only group meetings
+
+Meetings have one owner and up to 49 current invited/accepted guests, independent of text conversations. All marketplace roles may host. Guests must accept before requesting tokens. The roster records consent and access; use SDK participant state for live attendance.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /meetings` | `{client_id: "UUID", title, kind: "video", member_ids: ["UUID"]}`; audio also supported |
+| `GET /meetings` | Private list with limit/offset, `status=open/ended`, `invitation=invited/accepted` |
+| `GET /meetings/{id}` | Owner/current invitees read public roster and state |
+| `POST /meetings/{id}/members` | Owner invites or reinvites `{user_id}` |
+| `POST /meetings/{id}/accept` | Guest accepts, idempotently |
+| `POST /meetings/{id}/decline` | Guest withdraws consent and loses access |
+| `POST /meetings/{id}/token` | Accepted member obtains scoped room access |
+| `POST /meetings/{id}/leave` | Disconnects this session, preserving access for rejoin |
+| `DELETE /meetings/{id}/members/{user_id}` | Owner revokes access; cannot remove themselves |
+| `POST /meetings/{id}/end` | Owner ends the meeting and closes everyone's media |
+
+Titles are trimmed, 1â€“150 characters. Creation requires 1â€“49 unique guests excluding the owner. The same `client_id` and original payload return the existing meeting (`200` versus `201`); changed data returns `409`, even after roster changes. Private responses use `no-store`; outsiders and removed/declined members get `404` for reads and token access. Repeated decline returns no roster data.
+
+Rooms are created on the first accepted member's token request, with capacity 50, empty timeout 300 seconds and departure timeout 20 seconds. Owners need not stay online. If a materialized room disappears, the meeting ends. A meeting awaiting its first/replacement room can remain open until owner end.
+
+**Removal deliberately requires reconnection.** Self-hosted LiveKit cannot revoke an already issued JWT by kicking its holder. When removing a token-bearing member, the backend retires the current room and advances its version. Remaining members obtain new room tokens after old-room deletion succeeds. Token issuance pauses with `503` during cleanup. Keep `room.auto_create=false` so old tokens cannot recreate retired rooms.
+
+Decline/removal returns `204` after cleanup or `202` when authorization is revoked but media cleanup must retry. Owner end returns `media_cleanup_pending`. During an outage, old media may continue until deletion succeeds; clients should disconnect locally. Removing someone who never received tokens does not require rotation. Leaving retains consent and intentionally permits rejoin while the meeting stays open.
+
+Blocks prevent new invitations. For a shared open meeting, a guest who blocks someone is withdrawn; if the owner blocks someone, that target is removed. Disabling incoming calls revokes guest memberships while preserving meetings owned by the user. Token-bearing revocations retire the media room; other members retain invitations. These rules differ from shared text-chat history.
+
+The existing `/ws/chat` socket adds `meeting.invited`, `meeting.updated`, `meeting.member_removed`, `meeting.room_changed` and `meeting.ended`, carrying IDs but no tokens. Fetch REST state after hints. On `room_changed`, wait for cleanup to finish, request fresh tokens and reconnect. Recover invitations with `GET /meetings?status=open&invitation=invited`. The worker retries retired-room closure and reconciles missing/replaced rooms. See the [meeting walkthrough](docs/11-meetings.md) and [PDF guide](docs/LandConnect%20Meetings%20Guide.pdf).
 
 ## Database migrations
 
@@ -173,7 +231,7 @@ uv run --directory backend python -m alembic upgrade head
 
 Commit reviewed migrations with their model changes. Rebuild the image when code or migrations change. `docker compose up --build -d` applies pending migrations through the one-off `migrate` service before starting the API. The application never creates tables with `create_all`.
 
-The current revision is `0002_chat`. It preserves old direct conversations/messages, backfills their memberships, and adds groups, client retry keys and the outbox. Downgrade refuses while group conversations exist because the old schema cannot represent them.
+The current revision is `0004_meetings`. It preserves legacy members, backfills owner access, and adds invitation states, creation retry keys and durable room rotation. Downgrade refuses open meetings or pending cleanup. The earlier `0003_calls` migration supports one-to-one calls. It preserves existing call records and adds the caller retry key, media room SID, closure time and reconciliation time, with worker indexes. Legacy accepted timestamps are backfilled and terminal calls are marked as requiring no new media cleanup. Downgrade refuses while active calls or known media cleanup remain. The earlier `0002_chat` migration preserves direct history and blocks downgrade when groups exist.
 
 ## Checks
 
@@ -185,13 +243,17 @@ uv run --project backend ruff check backend scripts
 uv run --project backend ruff format --check backend scripts
 ```
 
-Without `TEST_POSTGRES_URL`, nine PostgreSQL integration tests are skipped. Two also require `TEST_REDIS_URL`. To run the complete suite against the development services configured in `.env`:
+Without `TEST_POSTGRES_URL`, fifteen PostgreSQL integration tests are skipped. Four also require `TEST_REDIS_URL`. To run the complete suite against the development services configured in `.env`:
 
 ```powershell
 uv run --directory backend python -c "import os,pytest; from app.core.config import get_settings; s=get_settings(); os.environ['TEST_POSTGRES_URL']=s.database_url; os.environ['TEST_REDIS_URL']=s.redis_url; raise SystemExit(pytest.main(['-q']))"
 ```
 
-Integration tests create unique temporary schemas and remove them after use. They check authentication, listings, schema/model consistency, migration preservation/rollback, concurrent send/removal and retry behavior, real Redis cross-instance fan-out, and subscriber reconnect/history recovery. Redis tests use unique channel prefixes and kill only their own subscriber connection. The database user needs permission to create schemas. Current validation: **157 tests passed**, plus the real LiveKit smoke check and an authenticated control API request from inside the API container. Three new unit cases check temporary-room cleanup on failure and STUN transaction validation. The installed TestClient emits one upstream HTTPX deprecation warning.
+Integration tests create unique temporary schemas and remove them after use. They check authentication, listings, migration preservation/rollback, concurrent messages and opposite-direction calls, Redis cross-instance fan-out, and background call timeout notifications. Redis tests use unique prefixes and kill only their own subscriber connection. The database user needs permission to create schemas. Current validation: **200 tests passed**. Calling tests also check state permissions, token grants, privacy termination, transaction rollback, cleanup retry and room reconciliation. The installed TestClient emits one upstream HTTPX deprecation warning. Real media/control checks and their current limitations are described in the calling guide.
+
+Additional native RTC probes exchanged synthetic audio/video in both directions inside Docker using default ICE and relay-only TURN, and API hangup disconnected both peers. Windows-host probes timed out even with a temporary LAN advertisement; host/device media routing remains unresolved. Normal loopback configuration was restored after these isolated tests. See the calling guide for the exact verification boundaries.
+
+Meeting verification adds a waiting-join/removal PostgreSQL race, cross-instance Redis invitations/removal, legacy membership preservation, consent/owner permissions, cleanup retry and privacy tests. Separate Docker-native probes passed three-client audio/video in all six directions, both with default ICE and relay-only TURN. Retained tokens could not rejoin the retired room after removal; surviving members rejoined a new room, and owner end disconnected everyone. These are separate media scenarios, not additional pytest cases or a physical-device demonstration.
 
 ## Files and explanations
 
@@ -201,6 +263,8 @@ Integration tests create unique temporary schemas and remove them after use. The
 - `backend/app/api/routes/auth.py` and `users.py`: registration, login and private profile endpoints.
 - `backend/app/api/routes/listings.py`: community, ownership, upload and geographic endpoints.
 - `backend/app/api/routes/conversations.py` and `websocket.py`: messaging REST and authenticated realtime endpoints.
+- `backend/app/api/routes/calls.py`: private one-to-one call lifecycle and media-token endpoints.
+- `backend/app/api/routes/meetings.py`: invite-only meeting, consent, member and token endpoints.
 - `backend/app/api/deps.py`: authenticated-user and role dependencies.
 - `backend/app/api/errors.py`: validation responses that omit submitted values.
 - `backend/app/api/middleware.py`: total request-body size limit.
@@ -210,6 +274,9 @@ Integration tests create unique temporary schemas and remove them after use. The
 - `backend/app/services/auth.py`: account creation and credential verification.
 - `backend/app/services/listings.py` and `media.py`: property queries, transactions and safe image storage.
 - `backend/app/services/chat.py`, `chat_outbox.py` and `realtime.py`: membership/privacy rules, transactional broker relay and local WebSocket fan-out.
+- `backend/app/services/calls.py`, `livekit.py` and `call_worker.py`: call state, media grants, room lifecycle and durable maintenance.
+- `backend/app/services/meetings.py` and `meeting_worker.py`: roster access, room retirement, cleanup retry and reconciliation.
+- `backend/app/services/privacy.py`: shared user-lock ordering and block checks for chat/calls.
 - `backend/app/db/base.py`: declarative base and constraint naming conventions.
 - `backend/app/db/session.py`: connection engine and request session dependency.
 - `backend/app/models/`: one file per entity, shared enums, helpers and explicit model exports.
@@ -226,6 +293,7 @@ Integration tests create unique temporary schemas and remove them after use. The
 - [Listings explanation](docs/06-listings.md) and [PDF guide](docs/LandConnect%20Listings%20Guide.pdf): uploads, maps and property management.
 - [Messaging explanation](docs/08-messaging.md) and [PDF guide](docs/LandConnect%20Messaging%20Guide.pdf): direct/group chat, Pub/Sub, privacy, code walkthrough and client protocol.
 - [LiveKit setup explanation](docs/09-livekit-setup.md) and [PDF guide](docs/LandConnect%20LiveKit%20Setup%20Guide.pdf): this infrastructure checkpoint and the boundaries of its verification.
+- [Calling explanation](docs/10-calling.md) and [PDF guide](docs/LandConnect%20Calling%20Guide.pdf): lifecycle, privacy, token grants, Pub/Sub, media cleanup and client integration.
 
 The structure separates HTTP handlers, configuration, persistence and models. Import `get_settings` from `app.core.config` and `get_db` from `app.db.session`. Import individual models from their modules or use the public exports in `app.models`. The models package imports every entity so Alembic receives the complete metadata registry. Importing it does not initialize a database engine.
 
@@ -237,4 +305,4 @@ Git is initialized at the project root on `main`. Keep `uv.lock` in Git; `.env` 
 docker compose down
 ```
 
-PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains message history and pending outbox rows. LiveKit rooms are runtime state, and restarting the SFU disconnects participants. The next checkpoint is **call lifecycle APIs, privacy checks, room tokens and realtime call events**, after you say **next**. Invite-only meetings, the mobile interface and end-to-end media demonstrations follow.
+PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. The next checkpoint is **client integration and host/device media connectivity**, after you say **next**. Physical-device audio/video demonstrations are still required.

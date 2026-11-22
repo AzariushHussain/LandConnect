@@ -18,7 +18,7 @@ def client():
     )
     with test_engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
-        connection.execute(text("INSERT INTO alembic_version VALUES ('0002_chat')"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('0004_meetings')"))
 
     def session():
         with Session(test_engine) as db:
