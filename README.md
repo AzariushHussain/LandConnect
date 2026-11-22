@@ -1,12 +1,12 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The current checkpoint includes **authentication, property listings, images, maps, direct and group messaging, and communication privacy controls**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. SFU calling comes in the next checkpoint.
+A land marketplace mobile application, built in stages. The current checkpoint includes **authentication, property listings, images, maps, direct/group messaging, privacy controls and self-hosted SFU infrastructure**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. Call lifecycle APIs and the calling interface come next.
 
 ## Calling architecture
 
 The agreed media architecture is **WebRTC through a self-hosted LiveKit SFU**, for both one-to-one calls and invite-only group meeting rooms. Mobile clients publish audio/video tracks to the SFU, which forwards them to the other participants. FastAPI owns authentication, invitations, membership checks, call state and short-lived room access tokens. LiveKit owns media transport and its WebRTC signaling.
 
-The `livekit-api` dependency is retained for server-side room management and token generation. The SFU service and calling endpoints will be implemented in the calling stage; they are not running yet. See the [SFU architecture decision](docs/04-sfu-architecture.md) or [PDF explanation](docs/LandConnect%20SFU%20Architecture%20Guide.pdf). The implemented authentication dependencies will supply user identity for those features.
+The `livekit-api` dependency supplies server-side room management and token generation. **LiveKit Server v1.13.11 now runs in Compose**, with the same credentials as the backend and local TURN/UDP support. We use its WebRTC media infrastructure; no Agents framework, AI models or LiveKit Cloud subscription are involved. Calling endpoints and client audio/video testing are still pending. See the [setup walkthrough](docs/09-livekit-setup.md), [setup PDF](docs/LandConnect%20LiveKit%20Setup%20Guide.pdf) and earlier [SFU architecture decision](docs/04-sfu-architecture.md).
 
 ## Chat architecture
 
@@ -24,7 +24,7 @@ docker compose up --build -d
 
 `uv sync` creates or reuses `backend/.venv`. You can use `uv run` without activating it. The setup script generates a local `.env` with random secrets and preserves an existing `.env`. Both `.env` and `.venv` are excluded from Git.
 
-Open [Swagger API documentation](http://localhost:8000/docs). The first image build downloads dependencies; the API starts after PostgreSQL and Redis are healthy and the migration service succeeds.
+Open [Swagger API documentation](http://localhost:8000/docs). The first image build downloads dependencies; the API starts after PostgreSQL, Redis and LiveKit are healthy and the migration service succeeds.
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/health/live
@@ -33,13 +33,39 @@ docker compose ps -a
 docker compose logs --tail=50 api migrate
 ```
 
-Readiness returns `503` when PostgreSQL is unavailable, its Alembic revision differs from the migration files, or the local Redis subscriber is disconnected. It does not verify future media features or guarantee notification delivery.
+Readiness returns `503` when PostgreSQL is unavailable, its Alembic revision differs from the migration files, or the local Redis subscriber is disconnected. It does not check LiveKit continuously, verify media transport or guarantee notification delivery. LiveKit has its own Compose HTTP health check and a separate authenticated smoke check below.
 
 Default local ports are API `8000`, PostgreSQL `55432` and Redis `56379`. They bind to the local computer only. To use different ports, update `API_PORT`, `POSTGRES_PORT` or `REDIS_PORT` in `.env`; keep host URLs in `DATABASE_URL` and `REDIS_URL` consistent. Compose uses `DOCKER_DATABASE_URL` for PostgreSQL and `redis://redis:6379/0` for Redis internally. Existing `.env` files can use the default Redis settings without being regenerated.
 
 Use a unique `CHAT_CHANNEL_PREFIX` per deployment sharing Redis. Pub/Sub channels are independent of Redis database numbers. Local Redis has no password and is intended for this loopback development stack; configure authentication, TLS and network access for hosted infrastructure.
 
 If you customize database credentials, keep `POSTGRES_*` and both connection URLs consistent. URL-encode special characters in connection URLs. PostgreSQL initialization settings apply when its data volume is first created; changing `.env` does not change an existing database password.
+
+## LiveKit infrastructure
+
+```powershell
+docker compose up -d livekit
+uv run --project backend python scripts/check_livekit.py
+docker compose ps livekit
+```
+
+The check creates a uniquely named temporary room, lists it, deletes it and verifies deletion. It also rejects a request signed with an incorrect secret, checks the STUN/UDP binding response on `3478`, and connects to ICE/TCP `7881`. It never displays credentials or existing room names. Passing this check does **not** prove audio/video playback or TURN media relay; those require clients in the next calling checkpoint.
+
+| Port | Purpose |
+| --- | --- |
+| `7880/TCP` | LiveKit HTTP control API and WebSocket signaling |
+| `7881/TCP` | ICE/TCP media fallback |
+| `7882/UDP` | Multiplexed WebRTC media |
+| `3478/UDP` | Embedded TURN/UDP, also serving STUN |
+| `30000–30049/UDP` | Bounded TURN relay allocation range for local testing |
+
+All LiveKit mappings bind to `LIVEKIT_BIND_IP`, default `127.0.0.1`. Keep RTC and TURN port numbers unchanged in this local configuration: clients receive those advertised port numbers. `infra/livekit/livekit.local.yaml` contains the non-secret server settings; Compose injects `LIVEKIT_KEYS` from the existing key/secret and supplies the advertised `NODE_IP`. There is no hardcoded development secret or `--dev` mode. Preserve the generated URL-safe credentials, and do not publish expanded Compose configuration because it contains secrets.
+
+For a host process, `LIVEKIT_INTERNAL_URL` defaults to `http://localhost:7880`; Compose overrides it to `http://livekit:7880` for the API container. `LIVEKIT_PUBLIC_URL` defaults to `ws://localhost:7880`, and `LIVEKIT_NODE_IP` defaults to `127.0.0.1`. Public URL and advertised media IP are different settings and both must be reachable by clients. An existing `.env` remains valid with the default bind IP.
+
+For a physical phone on the same trusted Wi-Fi, set `LIVEKIT_BIND_IP` and `LIVEKIT_NODE_IP` to the computer's LAN IPv4 address, and set `LIVEKIT_PUBLIC_URL=ws://<LAN-IP>:7880` and host `LIVEKIT_INTERNAL_URL=http://<LAN-IP>:7880`. Recreate the service with `docker compose up -d --force-recreate livekit` and permit the listed ports in the host firewall. The phone's `localhost` means the phone itself. These changes expose the SFU only; the API remains bound to loopback until mobile access is configured during client integration.
+
+This is a single-node local setup. TURN permits local/private peers and has 50 relay ports; it has not been load-tested. Public deployment needs reachable media addresses, appropriate network policy, HTTPS/WSS certificates and TURN/TLS for restrictive networks. The server may warn about Docker's UDP buffer size; tune that on the deployment host when testing production load. Rooms must be created explicitly by an authenticated server API because `room.auto_create` is disabled. This is infrastructure preparation, not the application's invitation/permission enforcement.
 
 ## Run the API locally with uv
 
@@ -165,7 +191,7 @@ Without `TEST_POSTGRES_URL`, nine PostgreSQL integration tests are skipped. Two 
 uv run --directory backend python -c "import os,pytest; from app.core.config import get_settings; s=get_settings(); os.environ['TEST_POSTGRES_URL']=s.database_url; os.environ['TEST_REDIS_URL']=s.redis_url; raise SystemExit(pytest.main(['-q']))"
 ```
 
-Integration tests create unique temporary schemas and remove them after use. They check authentication, listings, schema/model consistency, migration preservation/rollback, concurrent send/removal and retry behavior, real Redis cross-instance fan-out, and subscriber reconnect/history recovery. Redis tests use unique channel prefixes and kill only their own subscriber connection. The database user needs permission to create schemas. Current validation: **154 tests passed**; the installed TestClient emits one upstream HTTPX deprecation warning.
+Integration tests create unique temporary schemas and remove them after use. They check authentication, listings, schema/model consistency, migration preservation/rollback, concurrent send/removal and retry behavior, real Redis cross-instance fan-out, and subscriber reconnect/history recovery. Redis tests use unique channel prefixes and kill only their own subscriber connection. The database user needs permission to create schemas. Current validation: **157 tests passed**, plus the real LiveKit smoke check and an authenticated control API request from inside the API container. Three new unit cases check temporary-room cleanup on failure and STUN transaction validation. The installed TestClient emits one upstream HTTPX deprecation warning.
 
 ## Files and explanations
 
@@ -190,6 +216,8 @@ Integration tests create unique temporary schemas and remove them after use. The
 - `backend/tests/unit/` and `backend/tests/integration/`: isolated unit and PostgreSQL checks.
 - `backend/alembic/`: versioned schema changes, starting at `0001_initial`.
 - `backend/Dockerfile` and `compose.yaml`: API image, PostgreSQL, Redis and migration startup.
+- `infra/livekit/livekit.local.yaml`: local SFU, ICE and TURN configuration; credentials come from Compose.
+- `scripts/check_livekit.py`: authenticated room lifecycle and local connectivity smoke check.
 - [Step 1 guide](docs/LandConnect%20Backend%20Step%201%20Guide.pdf): initial scaffold explanation and full assignment roadmap.
 - [Step 2 explanation](docs/02-backend-foundation.md) and [PDF guide](docs/LandConnect%20Backend%20Step%202%20Guide.pdf): foundation checkpoint before the directory refactor.
 - [Backend structure explanation](docs/03-backend-structure.md): current directory tree, imports and the rules for adding models and future features.
@@ -197,6 +225,7 @@ Integration tests create unique temporary schemas and remove them after use. The
 - [Authentication explanation](docs/05-authentication.md) and [PDF guide](docs/LandConnect%20Authentication%20Guide.pdf): the authentication checkpoint.
 - [Listings explanation](docs/06-listings.md) and [PDF guide](docs/LandConnect%20Listings%20Guide.pdf): uploads, maps and property management.
 - [Messaging explanation](docs/08-messaging.md) and [PDF guide](docs/LandConnect%20Messaging%20Guide.pdf): direct/group chat, Pub/Sub, privacy, code walkthrough and client protocol.
+- [LiveKit setup explanation](docs/09-livekit-setup.md) and [PDF guide](docs/LandConnect%20LiveKit%20Setup%20Guide.pdf): this infrastructure checkpoint and the boundaries of its verification.
 
 The structure separates HTTP handlers, configuration, persistence and models. Import `get_settings` from `app.core.config` and `get_db` from `app.db.session`. Import individual models from their modules or use the public exports in `app.models`. The models package imports every entity so Alembic receives the complete metadata registry. Importing it does not initialize a database engine.
 
@@ -208,4 +237,4 @@ Git is initialized at the project root on `main`. Keep `uv.lock` in Git; `.env` 
 docker compose down
 ```
 
-PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains message history and pending outbox rows. LiveKit deployment, the mobile interface and whole-application media testing will be added in their own stages. The next checkpoint is **SFU audio/video calls and invite-only meeting rooms**, after you say **next**.
+PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains message history and pending outbox rows. LiveKit rooms are runtime state, and restarting the SFU disconnects participants. The next checkpoint is **call lifecycle APIs, privacy checks, room tokens and realtime call events**, after you say **next**. Invite-only meetings, the mobile interface and end-to-end media demonstrations follow.

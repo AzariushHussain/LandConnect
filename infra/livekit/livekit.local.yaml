@@ -1,0 +1,27 @@
+# Local development only. Public deployment needs TLS and a reachable media IP.
+# API credentials and advertised NODE_IP are supplied by Compose, not committed here.
+port: 7880
+bind_addresses: ["0.0.0.0"]
+logging:
+  level: info
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  enable_loopback_candidate: true
+turn:
+  enabled: true
+  bind_addresses: ["0.0.0.0"]
+  udp_port: 3478
+  relay_range_start: 30000
+  relay_range_end: 30049
+  # Local/LAN clients need private peers; embedded TURN also restricts relays to SFU media ports.
+  allow_restricted_peer_cidrs:
+    - 127.0.0.1/32
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+room:
+  auto_create: false
+  empty_timeout: 60
+  departure_timeout: 20
