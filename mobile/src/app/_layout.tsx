@@ -4,12 +4,13 @@ import { registerGlobals, setLogLevel } from '@livekit/react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, DefaultTheme, Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { calls, realtime, session } from '../application/services';
+import { calls, meetingSession, realtime, session } from '../application/services';
 import { useSession } from '../application/use-session';
 import { Action, Brand, Notice, Screen } from '../ui/components';
 import { colors } from '../ui/theme';
 import { canManage } from '../features/management/form';
 import { CallBanner } from '../features/calls/CallBanner';
+import { MeetingBanner } from '../features/meetings/MeetingBanner';
 
 registerGlobals();
 setLogLevel('silent');
@@ -57,6 +58,33 @@ export default function RootLayout() {
     return () => {
       listener.remove();
       realtime.stop();
+    };
+  }, [realtimeToken]);
+
+  useEffect(() => {
+    if (!realtimeToken) {
+      meetingSession.reset();
+      return;
+    }
+    const update = () => {
+      if (AppState.currentState === 'active') meetingSession.foreground(true);
+      else if (AppState.currentState === 'background') meetingSession.foreground(false);
+    };
+    update();
+    const app = AppState.addEventListener('change', update);
+    const unsubscribe = realtime.onMeetingHint(meetingSession.hint);
+    const refresh = setInterval(() => {
+      const current = meetingSession.getSnapshot().meeting;
+      if (current && (!current.ended_at || current.media_cleanup_pending))
+        void meetingSession.refresh();
+    }, 5000);
+    const discover = setInterval(() => void meetingSession.discover(), 15000);
+    return () => {
+      app.remove();
+      unsubscribe();
+      clearInterval(refresh);
+      clearInterval(discover);
+      meetingSession.reset();
     };
   }, [realtimeToken]);
   useEffect(() => {
@@ -118,6 +146,9 @@ export default function RootLayout() {
                 <Stack.Screen name="index" options={{ title: 'LandConnect' }} />
                 <Stack.Screen name="account" options={{ title: 'My account' }} />
                 <Stack.Screen name="calls" options={{ title: 'Call controls' }} />
+                <Stack.Screen name="meetings/index" options={{ title: 'Meetings' }} />
+                <Stack.Screen name="meetings/new" options={{ title: 'Host a meeting' }} />
+                <Stack.Screen name="meetings/[id]" options={{ title: 'Meeting controls' }} />
                 <Stack.Screen name="privacy/index" options={{ title: 'Privacy settings' }} />
                 <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked accounts' }} />
                 <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
@@ -138,6 +169,7 @@ export default function RootLayout() {
               </Stack.Protected>
             </Stack>
             {state.status === 'signedIn' && <CallBanner />}
+            {state.status === 'signedIn' && <MeetingBanner />}
           </View>
         </ThemeProvider>
       )}

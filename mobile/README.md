@@ -1,6 +1,6 @@
 # LandConnect mobile
 
-React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, listings/photos/maps/location selection, direct/group messaging, group administration, privacy/block controls and foreground one-to-one LiveKit audio/video calling. FastAPI remains the source of permissions and application data.
+React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, listings/photos/maps/location selection, direct/group messaging, group administration, privacy/block controls, foreground one-to-one calling and invite-only group meetings with LiveKit. FastAPI remains the source of permissions and application data.
 
 ## Run on your Android phone
 
@@ -70,7 +70,7 @@ uv run --project backend python scripts/check_mobile_listings.py
 
 ## Current verification
 
-The foundation development APK was installed and reached sign-in. This calling update adds native modules and needs a rebuilt client. Phone UI checks remain skipped at the user's request. The suite has 122 passing tests; backend chat/call/meeting test files pass 66 tests. TypeScript/lint/format, Android bundle export and all 20 Expo Doctor checks pass. The real-route call probe uses fake room operations and an injected authorized socket event; it does not test live Redis/media. Real phone and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Concurrent property/privacy edits follow last-write-wins behavior. Five moderate npm audit entries propagate the minimatch/Expo fingerprint issue, now through the WebRTC config plugin too; no high/critical entries or forced downgrade.
+The foundation development APK was installed and reached sign-in. Step 7 added native calling modules; this meeting step reuses them without another native/config change. Phone UI checks remain skipped at the user's request. The suite has 147 passing tests; backend chat/call/meeting test files pass 66 tests. TypeScript/lint/format, Android bundle export and all 20 Expo Doctor checks pass. The real-route meeting/call probes use fake room operations and injected authorized socket events; they do not test live Redis/media. Real phone and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Concurrent property/privacy edits follow last-write-wins behavior. The last audit recorded five moderate entries along the minimatch/Expo fingerprint chain, propagated through the WebRTC config plugin too; no high/critical entries or forced downgrade. Dependencies did not change in this meeting stage.
 
 The calling-stage ARM64 native APK built successfully in 7m 33s (539 tasks), at `android/app/build/outputs/apk/debug/app-debug.apk`, 122,454,695 bytes. Packaged permission inspection confirms `CAMERA` and `RECORD_AUDIO`. It was not installed on the phone in this step and still requires Metro.
 
@@ -87,7 +87,7 @@ The backend now accepts its exact HTTP(S) API origin in the socket handler, whic
 
 Read [mobile step 6](../docs/18-mobile-privacy.md) for incoming-message/call preferences, confirmed saves, session safety and blocked-account controls. Open My account > Privacy settings. Blocking is also available from listings and chats; review/unblock through Blocked accounts. Existing groups/history remain shared. Switches edit a local draft until Save; an uncertain save requires refresh before further edits. The chat contract probe now verifies real privacy/block routes and enforcement too.
 
-Read [mobile step 7](../docs/19-mobile-calling.md) for the call state machine, native configuration, session safety and cleanup. Start Audio call/Video call from a property owner or direct-chat participant. Use the incoming banner or My account > Call controls to return. Accept and Join call media are separate actions; only Join requests native permissions. Keep the app foregrounded: backgrounding stops media and attempts to finish the call. Failed verification stops media until an explicit rejoin. No locked-screen calling, background call service, offline push, recording or group meeting UI is included yet.
+Read [mobile step 7](../docs/19-mobile-calling.md) for the call state machine, native configuration, session safety and cleanup. Start Audio call/Video call from a property owner or direct-chat participant. Use the incoming banner or My account > Call controls to return. Accept and Join call media are separate actions; only Join requests native permissions. Keep the app foregrounded: backgrounding stops media and attempts to finish the call. Failed verification stops media until an explicit rejoin. No locked-screen calling, background call service, offline push or recording is included yet.
 
 For existing native checkouts, use clean prebuild with Gradle stopped to remove old generated camera/microphone permission blocks. Keep native changes in app config/plugins. Production requires HTTPS API/WSS media origins; development permits private-LAN/loopback HTTP/WS. Rebuild/install before testing; the existing phone installation lacks these native modules.
 
@@ -95,4 +95,13 @@ Run the new contract probe from the repository root:
 
 ```powershell
 uv run --project backend python scripts/check_mobile_calls.py
+```
+
+Read [mobile step 8](../docs/20-mobile-meetings.md) for hosting, invitations/consent, room rotation and shared native media. Open My account > Meetings or Chats > Meetings and invitations; group conversations prefill a hosting form. Chat and meeting membership remain separate. The host can invite/remove/end; participants accept, join, leave media or withdraw consent. Removing a token-holding member can rotate the room, requiring surviving members to refresh and explicitly rejoin. Empty 202 removal/withdrawal responses mean access was revoked while cleanup is pending.
+
+Call and meeting screens share one native media implementation and serialize audio ownership. Only the focused controls screen renders media; hidden routes cannot duplicate capture. Returning to the same still-joined session within the foreground app can reconnect media. Backgrounding, failed verification or room/access changes clear joined state. This device cannot join meeting media and a direct call simultaneously. Meeting pages use the Step 7 native development APK with Metro; a standalone submission APK remains the next packaging task.
+
+```powershell
+# From the repository root
+uv run --project backend python scripts/check_mobile_meetings.py
 ```

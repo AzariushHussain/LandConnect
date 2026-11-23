@@ -15,7 +15,7 @@ export function CallBanner() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Open call controls"
-      onPress={() => router.push('/calls')}
+      onPress={() => router.navigate('/calls')}
       style={styles.banner}
     >
       <Text accessibilityLiveRegion="polite" style={styles.text}>

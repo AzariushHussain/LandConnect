@@ -9,9 +9,11 @@ import { MapsApi } from '../features/maps/api';
 import { ChatApi } from '../features/chat/api';
 import { ChatRealtime } from '../features/chat/realtime';
 import { PrivacyApi } from '../features/privacy/api';
-import { CallsApi } from '../features/calls/api';
+import { active, CallsApi } from '../features/calls/api';
 import { CallController } from '../features/calls/controller';
 import { randomUUID } from 'expo-crypto';
+import { MeetingsApi } from '../features/meetings/api';
+import { MeetingSession } from '../features/meetings/session';
 
 export const client = new ApiClient(validateApiUrl(process.env.EXPO_PUBLIC_API_URL, __DEV__));
 export const authApi = new AuthApi(client);
@@ -22,5 +24,17 @@ export const mapsApi = new MapsApi(client);
 export const chatApi = new ChatApi(client, session);
 export const privacyApi = new PrivacyApi(client, session);
 export const callsApi = new CallsApi(client, session, __DEV__);
-export const calls = new CallController(callsApi, () => session.access()?.user.id, randomUUID);
+export const calls: CallController = new CallController(
+  callsApi,
+  () => session.access()?.user.id,
+  randomUUID,
+  () => meetingSession.getSnapshot().joined || meetingSession.getSnapshot().joining,
+);
+export const meetingsApi = new MeetingsApi(client, session, __DEV__);
+export const meetingSession: MeetingSession = new MeetingSession(
+  meetingsApi,
+  () => session.access()?.user.id,
+  () =>
+    active(calls.getSnapshot().call) || !!calls.getSnapshot().attempt || calls.getSnapshot().busy,
+);
 export const realtime = new ChatRealtime(client.baseUrl, session, (url) => new WebSocket(url));

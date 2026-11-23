@@ -12,6 +12,7 @@ export type RequestOptions = {
   body?: unknown;
   token?: string;
   form?: FormData;
+  emptyResponse?: boolean;
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 };
 
@@ -54,7 +55,7 @@ export class ApiClient {
           messages[response.status] ?? 'The service is unavailable. Please try again.',
         );
       }
-      if (response.status === 204) return undefined as T;
+      if (response.status === 204 || options.emptyResponse) return undefined as T;
       return (await response.json()) as T;
     } catch (error) {
       if (error instanceof ApiError) throw error;

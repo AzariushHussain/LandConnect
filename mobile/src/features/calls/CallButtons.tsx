@@ -8,7 +8,7 @@ export function CallButtons({ peerId }: { peerId: string }) {
   const state = useCalls();
   if (peerId === session.access()?.user.id) return null;
   if (active(state.call) || state.attempt)
-    return <Action label="Open current call" secondary onPress={() => router.push('/calls')} />;
+    return <Action label="Open current call" secondary onPress={() => router.navigate('/calls')} />;
   return (
     <>
       <Action
@@ -17,7 +17,7 @@ export function CallButtons({ peerId }: { peerId: string }) {
         disabled={state.busy || !state.foreground}
         onPress={() => {
           void calls.start(peerId, 'audio');
-          router.push('/calls');
+          router.navigate('/calls');
         }}
       />
       <Action
@@ -26,7 +26,7 @@ export function CallButtons({ peerId }: { peerId: string }) {
         disabled={state.busy || !state.foreground}
         onPress={() => {
           void calls.start(peerId, 'video');
-          router.push('/calls');
+          router.navigate('/calls');
         }}
       />
     </>

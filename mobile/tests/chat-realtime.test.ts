@@ -201,3 +201,30 @@ test('call hints share the authenticated socket, deduplicate and forward metadat
     f.transport.stop();
   }
 });
+test('meeting room/removal hints share the socket and reject malformed targets', () => {
+  const f = fixture(),
+    events: unknown[] = [];
+  f.transport.onMeetingHint((hint) => events.push(hint));
+  try {
+    const socket = f.sockets[0]!;
+    socket.open();
+    socket.receive({ type: 'ready', user_id: actor });
+    const event = {
+      type: 'meeting.member_removed',
+      event_id: listingId(800),
+      meeting_id: chatId,
+      target_user_id: actor,
+      token: 'private',
+    };
+    socket.receive(event);
+    socket.receive(event);
+    assert.deepEqual(events, [
+      { type: 'reconcile' },
+      { type: event.type, event_id: event.event_id, meeting_id: chatId, target_user_id: actor },
+    ]);
+    socket.receive({ ...event, target_user_id: 'bad' });
+    assert.equal(f.transport.getSnapshot().status, 'paused');
+  } finally {
+    f.transport.stop();
+  }
+});

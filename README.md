@@ -1,8 +1,10 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, group administration, privacy/block controls and foreground one-to-one LiveKit audio/video calling.
+A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, group administration, privacy/block controls, foreground one-to-one calling and invite-only group meeting screens using LiveKit.
 
 ## Android application
+
+Local demo data is available with **two Buyer, two Seller and two Broker accounts**. See [demo accounts and seed instructions](docs/21-demo-data.md) for login details, sample properties/chats/meeting invitations and the reusable `scripts/seed_demo.py` helper. Existing data is preserved.
 
 The application lives in [mobile/](mobile/README.md) and uses TypeScript, Expo Router and Expo development builds. Start the backend with the LAN helper, configure `mobile/.env` from its example, then use `npm ci` and `npm run android -- --device` from `mobile/` with an ADB-authorized Android phone. Subsequent development uses `npm start`. LiveKit uses native WebRTC modules and requires rebuilding the development client; Expo Go is not supported.
 
@@ -15,6 +17,8 @@ The [mobile privacy walkthrough](docs/18-mobile-privacy.md) and [step 6 PDF](doc
 The [mobile calling walkthrough](docs/19-mobile-calling.md) and [step 7 PDF](docs/LandConnect%20Mobile%20Step%207%20Guide.pdf) explain one-to-one call controls, shared PubSub hints, native permissions, media cleanup and recovery. Start from property owners/direct chats; incoming calls use an in-app banner. Accept first, then Join call media. Backgrounding stops media and attempts to finish the call. **122 mobile tests**, **66 selected backend tests**, the real-route call contract probe, TypeScript/lint/format, Android JS export and **20/20 Expo Doctor checks** pass. Phone UI/media and live Redis checks remain unverified at this stage. Run `uv run --project backend python scripts/check_mobile_calls.py` for the isolated contract check.
 
 The calling-stage ARM64 development APK builds successfully; packaged-APK inspection confirms camera/microphone permissions. It requires Metro and has not been installed/tested on the phone in this stage.
+
+The [mobile meeting walkthrough](docs/20-mobile-meetings.md) and [step 8 PDF](docs/LandConnect%20Mobile%20Step%208%20Guide.pdf) explain hosting, consent, shared native media, member removal, versioned rooms and cleanup. Open My account > Meetings, or host from a group chat. Meeting invitations are managed separately from chat membership. Current checks pass **147 mobile tests**, **66 selected backend tests**, the real-route meeting/call/chat/privacy probes, TypeScript/lint/format, Android JS export and **20/20 Expo Doctor checks**. Meeting checks use fake room operations and an injected authorized socket event; real device/SFU/Redis delivery remains unverified. No new native dependency/config change requires an APK rebuild in this step. Run `uv run --project backend python scripts/check_mobile_meetings.py` for the new isolated probe.
 
 ## Calling architecture
 
@@ -333,4 +337,4 @@ Git is initialized at the project root on `main`. Keep `uv.lock` in Git; `.env` 
 docker compose down
 ```
 
-PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. The next mobile feature checkpoint is **group meeting screens**, using the existing SFU/meeting APIs. Restore Docker/LAN API startup before live app testing. Physical-device audio/video demonstrations are still required.
+PostgreSQL data and uploads are stored in named volumes, which this command preserves. Redis notifications are transient; PostgreSQL retains history, pending notifications and media cleanup intent. LiveKit rooms are runtime state; restarting the SFU disconnects participants and maintenance reconciles missing rooms. The next checkpoint is **a standalone demo APK and submission documentation**, followed by real calling demonstrations when device testing resumes. Restore Docker/LAN API startup before live app testing. Physical-device audio/video demonstrations are still required.

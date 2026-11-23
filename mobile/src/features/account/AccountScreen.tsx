@@ -58,7 +58,8 @@ export function AccountScreen() {
         {!!privacyError && <Notice error>{privacyError}</Notice>}
         <Action label="Privacy settings" secondary onPress={() => router.push('/privacy')} />
       </View>
-      <Action label="Call controls" secondary onPress={() => router.push('/calls')} />
+      <Action label="Call controls" secondary onPress={() => router.navigate('/calls')} />
+      <Action label="Meetings" secondary onPress={() => router.push('/meetings')} />
       <Action
         secondary
         label="Sign out of this device"

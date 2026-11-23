@@ -1,5 +1,18 @@
 import type { ChatSession } from './api';
 import { messageId, row, uuid } from './types';
+export type MeetingHint =
+  | { type: 'reconcile' }
+  | {
+      type:
+        | 'meeting.invited'
+        | 'meeting.updated'
+        | 'meeting.member_removed'
+        | 'meeting.room_changed'
+        | 'meeting.ended';
+      event_id: string;
+      meeting_id: string;
+      target_user_id?: string;
+    };
 export type CallHint =
   | { type: 'reconcile' }
   | {
@@ -42,6 +55,7 @@ export class ChatRealtime {
   private listeners = new Set<() => void>();
   private hints = new Set<(hint: ChatHint) => void>();
   private callHints = new Set<(hint: CallHint) => void>();
+  private meetingHints = new Set<(hint: MeetingHint) => void>();
   private socket: Socket | null = null;
   private generation = 0;
   private running = false;
@@ -71,6 +85,12 @@ export class ChatRealtime {
     this.callHints.add(listener);
     return () => {
       this.callHints.delete(listener);
+    };
+  };
+  onMeetingHint = (listener: (hint: MeetingHint) => void) => {
+    this.meetingHints.add(listener);
+    return () => {
+      this.meetingHints.delete(listener);
     };
   };
   private duplicate(id: string) {
@@ -178,6 +198,7 @@ export class ChatRealtime {
           watch(45000);
           this.emit({ type: 'reconcile' });
           for (const listener of this.callHints) listener({ type: 'reconcile' });
+          for (const listener of this.meetingHints) listener({ type: 'reconcile' });
           return;
         }
         if (this.state.status !== 'ready') {
@@ -189,7 +210,39 @@ export class ChatRealtime {
           socket.send(JSON.stringify({ type: 'pong' }));
           return;
         }
-        if (typeof data.type === 'string' && data.type.startsWith('meeting.')) return;
+        if (typeof data.type === 'string' && data.type.startsWith('meeting.')) {
+          if (
+            ![
+              'meeting.invited',
+              'meeting.updated',
+              'meeting.member_removed',
+              'meeting.room_changed',
+              'meeting.ended',
+            ].includes(data.type) ||
+            typeof data.event_id !== 'string' ||
+            !uuid(data.event_id) ||
+            typeof data.meeting_id !== 'string' ||
+            !uuid(data.meeting_id) ||
+            (data.actor_id != null &&
+              (typeof data.actor_id !== 'string' || !uuid(data.actor_id))) ||
+            (data.target_user_id != null &&
+              (typeof data.target_user_id !== 'string' || !uuid(data.target_user_id)))
+          ) {
+            fail(true);
+            return;
+          }
+          if (this.duplicate(data.event_id)) return;
+          for (const listener of this.meetingHints)
+            listener({
+              type: data.type as Exclude<MeetingHint, { type: 'reconcile' }>['type'],
+              event_id: data.event_id,
+              meeting_id: data.meeting_id,
+              ...(typeof data.target_user_id === 'string'
+                ? { target_user_id: data.target_user_id }
+                : {}),
+            });
+          return;
+        }
         if (typeof data.type === 'string' && data.type.startsWith('call.')) {
           if (
             ![

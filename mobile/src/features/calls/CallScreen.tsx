@@ -1,6 +1,6 @@
 import { Alert, Linking } from 'react-native';
 import { useEffect, useState } from 'react';
-import { usePreventRemove } from 'expo-router';
+import { useIsFocused, usePreventRemove } from 'expo-router';
 import { calls, session } from '../../application/services';
 import { Action, Heading, Notice, Screen } from '../../ui/components';
 import { RealtimeNotice } from '../chat/use-chat-updates';
@@ -10,6 +10,7 @@ import { NativeCall } from './NativeCall';
 
 export function CallScreen() {
   const state = useCalls();
+  const focused = useIsFocused();
   const call = state.call;
   const [leave, setLeave] = useState<(() => void) | null>(null);
   useEffect(() => {
@@ -91,7 +92,7 @@ export function CallScreen() {
       )}
       {call?.status === 'accepted' && (
         <>
-          {state.joined && state.verified && state.foreground ? (
+          {focused && state.joined && state.verified && state.foreground ? (
             <NativeCall key={call.id} call={call} />
           ) : (
             <>

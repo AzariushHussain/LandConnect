@@ -1,5 +1,5 @@
 import { ApiClient, ApiError, RequestOptions } from '../../api/client';
-import { validateApiUrl } from '../../config/api-url';
+import { mediaToken } from '../media/token';
 import type { ChatSession } from '../chat/api';
 import { person, Person, row, uuid } from '../chat/types';
 
@@ -58,24 +58,7 @@ export function callDto(value: unknown, actor: string): Call {
   };
 }
 export function roomToken(value: unknown, id: string, development: boolean) {
-  const data = row(value);
-  if (
-    typeof data.url !== 'string' ||
-    typeof data.token !== 'string' ||
-    !data.token ||
-    data.token.length > 16384 ||
-    data.room !== `call-${id}` ||
-    !Number.isInteger(data.expires_in) ||
-    (data.expires_in as number) < 1 ||
-    (data.expires_in as number) > 3600
-  )
-    throw new Error('Could not verify media access.');
-  const url = new URL(data.url);
-  if (!['ws:', 'wss:'].includes(url.protocol)) throw new Error('Invalid media connection.');
-  const origin = new URL(url);
-  origin.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
-  validateApiUrl(origin.toString(), development);
-  return { url: url.toString(), token: data.token, room: data.room as string };
+  return mediaToken(value, `call-${id}`, development);
 }
 export type CallAttempt = { client_id: string; callee_id: string; kind: CallKind };
 export class CallsApi {

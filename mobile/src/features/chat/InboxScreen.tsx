@@ -33,6 +33,11 @@ export function InboxScreen() {
             />
             <RealtimeNotice />
             <Action label="Create a group" onPress={() => router.push('/chats/new-group')} />
+            <Action
+              label="Meetings and invitations"
+              secondary
+              onPress={() => router.push('/meetings')}
+            />
             {!!state.error && <Notice error>{state.error}</Notice>}
             {state.loading && (
               <ActivityIndicator color={colors.green} accessibilityLabel="Loading conversations" />

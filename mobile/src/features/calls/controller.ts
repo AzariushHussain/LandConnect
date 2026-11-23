@@ -35,6 +35,7 @@ export class CallController {
     private readonly api: Api,
     private readonly actor: () => string | undefined,
     private readonly random: () => string,
+    private readonly otherMediaBusy: () => boolean = () => false,
   ) {}
   private update(patch: Partial<State>) {
     this.state = { ...this.state, ...patch };
@@ -106,6 +107,7 @@ export class CallController {
     }
   };
   start = async (callee: string, kind: CallKind) => {
+    if (this.blockedByMeeting()) return;
     if (this.state.busy || active(this.state.call) || this.state.attempt || !this.state.foreground)
       return;
     this.update({ attempt: { client_id: this.random(), callee_id: callee, kind }, joined: false });
@@ -142,6 +144,7 @@ export class CallController {
     }
   };
   accept = async () => {
+    if (this.blockedByMeeting()) return;
     const call = this.state.call;
     if (
       !call ||
@@ -154,7 +157,9 @@ export class CallController {
     await this.change('accept');
   };
   join = async () => {
+    if (this.blockedByMeeting()) return;
     await this.refresh();
+    if (this.blockedByMeeting()) return;
     if (
       this.state.foreground &&
       this.state.verified &&
@@ -169,6 +174,11 @@ export class CallController {
       error:
         'Media could not connect. Check camera/microphone permissions and the media server, then retry joining.',
     });
+  private blockedByMeeting() {
+    if (!this.otherMediaBusy()) return false;
+    this.update({ error: 'Leave meeting media before starting or accepting a one-to-one call.' });
+    return true;
+  }
   finish = async () => {
     this.update({ joined: false });
     const call = this.state.call;

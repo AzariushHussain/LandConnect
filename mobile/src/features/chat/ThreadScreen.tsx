@@ -90,6 +90,14 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
           )}
           {state.chat?.kind === 'group' && (
             <Action
+              label="Host a meeting with this group"
+              secondary
+              disabled={state.unavailable}
+              onPress={() => router.push({ pathname: '/meetings/new', params: { group: id } })}
+            />
+          )}
+          {state.chat?.kind === 'group' && (
+            <Action
               label="Group information"
               secondary
               onPress={() => router.push({ pathname: '/chats/[id]/info', params: { id } })}
