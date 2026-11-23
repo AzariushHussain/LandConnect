@@ -87,6 +87,7 @@ export function VideoCallControls({
   muted = false,
   camera = false,
   busy = false,
+  cameraBusy = false,
   onMute,
   onCamera,
   onAudio,
@@ -96,6 +97,7 @@ export function VideoCallControls({
   muted?: boolean;
   camera?: boolean;
   busy?: boolean;
+  cameraBusy?: boolean;
   onMute?: () => void;
   onCamera?: () => void;
   onAudio?: () => void;
@@ -109,7 +111,7 @@ export function VideoCallControls({
         tone="dark"
         size={54}
         selected={!camera}
-        busy={busy}
+        busy={busy || cameraBusy}
         disabled={!enabled || !onCamera}
         onPress={() => onCamera?.()}
       />

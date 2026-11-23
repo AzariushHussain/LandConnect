@@ -13,6 +13,8 @@ import { ConnectionState, Track } from 'livekit-client';
 import { IconButton } from '../../ui/IconButton';
 import { CallVideoStage } from './CallVideoStage';
 import { VideoCallControls, VideoCallFrame, VideoCallOptions } from './VideoCallFrame';
+import { cameraCapture, videoPublishDefaults } from '../media/capture';
+import { switchCameraSource } from '../media/switch-camera';
 
 export function CallMedia({
   group = false,
@@ -29,12 +31,14 @@ export function CallMedia({
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const tracks = useTracks([Track.Source.Camera]).filter(isTrackReference);
   const [busy, setBusy] = useState(false),
+    [cameraBusy, setCameraBusy] = useState(false),
     [error, setError] = useState(''),
     [output, setOutput] = useState(''),
     [outputs, setOutputs] = useState<string[] | null>(null),
     [frontFacing, setFrontFacing] = useState(true);
   const alive = useRef(true),
-    changing = useRef(false);
+    changing = useRef(false),
+    changingCamera = useRef(false);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -50,7 +54,8 @@ export function CallMedia({
       : group
         ? 'Waiting for others…'
         : 'Waiting for the other person…'
-    : connection === ConnectionState.Reconnecting
+    : connection === ConnectionState.Reconnecting ||
+        connection === ConnectionState.SignalReconnecting
       ? 'Reconnecting…'
       : 'Connecting…';
   async function change(operation: () => Promise<unknown>) {
@@ -75,9 +80,58 @@ export function CallMedia({
   async function flipCamera() {
     const track = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
     if (!track) throw new Error('Camera is not available');
-    const next = frontFacing ? 'environment' : 'user';
-    await track.restartTrack({ facingMode: next });
-    if (alive.current) setFrontFacing(next === 'user');
+    const current = track.mediaStreamTrack.getSettings().facingMode;
+    const next =
+      (current ?? (frontFacing ? 'user' : 'environment')) === 'user' ? 'environment' : 'user';
+    const actual = await switchCameraSource(
+      track,
+      next,
+      () => alive.current && room.state !== ConnectionState.Disconnected,
+    );
+    if (alive.current && actual) setFrontFacing(actual === 'user');
+  }
+  async function cameraChange(operation: () => Promise<unknown>) {
+    if (changingCamera.current) return;
+    changingCamera.current = true;
+    setCameraBusy(true);
+    setError('');
+    const timer = setTimeout(() => {
+      if (alive.current)
+        setError('The camera is taking longer than expected. Audio and End remain available.');
+    }, 8000);
+    try {
+      await operation();
+    } catch (failure) {
+      if (alive.current)
+        setError(
+          failure instanceof Error && failure.message.startsWith('Could not switch')
+            ? failure.message
+            : 'Could not change the camera. Audio is still available.',
+        );
+    } finally {
+      clearTimeout(timer);
+      changingCamera.current = false;
+      if (alive.current) setCameraBusy(false);
+      else {
+        for (const publication of room.localParticipant.trackPublications.values())
+          publication.track?.stop();
+        await room.disconnect(true).catch(() => {});
+      }
+    }
+  }
+  async function toggleCamera() {
+    if (isCameraEnabled) {
+      await localParticipant.setCameraEnabled(false);
+      return;
+    }
+    const previous = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
+    if (previous) await localParticipant.unpublishTrack(previous);
+    if (!alive.current || room.state !== ConnectionState.Connected) return;
+    await localParticipant.setCameraEnabled(
+      true,
+      cameraCapture(frontFacing ? 'user' : 'environment'),
+      videoPublishDefaults,
+    );
   }
   async function audioOutputs() {
     try {
@@ -148,9 +202,9 @@ export function CallMedia({
             icon="camera-reverse-outline"
             label="Switch front or rear camera"
             tone="dark"
-            busy={busy}
+            busy={cameraBusy}
             disabled={!connected || !isCameraEnabled}
-            onPress={() => void change(flipCamera)}
+            onPress={() => void cameraChange(flipCamera)}
           />
         }
         controls={
@@ -158,12 +212,13 @@ export function CallMedia({
             options={videoOptions}
             enabled={connected}
             busy={busy}
+            cameraBusy={cameraBusy}
             muted={!isMicrophoneEnabled}
             camera={isCameraEnabled}
             onMute={() =>
               void change(() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))
             }
-            onCamera={() => void change(() => localParticipant.setCameraEnabled(!isCameraEnabled))}
+            onCamera={() => void cameraChange(toggleCamera)}
             onAudio={() => void audioOutputs()}
           />
         }

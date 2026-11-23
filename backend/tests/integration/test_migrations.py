@@ -44,7 +44,8 @@ def test_migrations_match_models_and_round_trip(migrated_database):
     command.upgrade(config, "head")
     with db.connect() as connection:
         assert (
-            connection.scalar(text("SELECT version_num FROM alembic_version")) == "0005_group_calls"
+            connection.scalar(text("SELECT version_num FROM alembic_version"))
+            == "0006_call_reconnect"
         )
     assert set(inspect(db).get_table_names()) == expected_tables
 

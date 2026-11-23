@@ -18,12 +18,14 @@ function ParticipantVideo({
   name,
   mirror = false,
   floating = false,
+  visible = true,
 }: {
   participant: Participant;
   track?: TrackReference;
   name: string;
   mirror?: boolean;
   floating?: boolean;
+  visible?: boolean;
 }) {
   const speaking = useIsSpeaking(participant);
   const { isMuted: cameraOff } = useTrackMutedIndicator({
@@ -34,7 +36,7 @@ function ParticipantVideo({
     participant,
     source: Track.Source.Microphone,
   });
-  const hasVideo = !!track && !cameraOff && !track.publication.isMuted;
+  const hasVideo = visible && !!track && !cameraOff && !track.publication.isMuted;
   return (
     <View style={[styles.tile, speaking && styles.speaking]}>
       {hasVideo ? (
@@ -157,6 +159,7 @@ export function CallVideoStage({
             initialNumToRender={1}
             maxToRenderPerBatch={1}
             windowSize={3}
+            extraData={page}
             getItemLayout={(_, index) => ({
               index,
               length: size.width,
@@ -173,13 +176,14 @@ export function CallVideoStage({
                 ),
               )
             }
-            renderItem={({ item }) => {
+            renderItem={({ item, index: pageIndex }) => {
               const frames = videoGrid(item.length, size.width, size.height);
               return (
                 <View style={size}>
                   {item.map((participant, index) => (
                     <View key={participant.identity} style={[styles.gridCell, frames[index]]}>
                       <ParticipantVideo
+                        visible={pageIndex === page}
                         participant={participant}
                         track={byId.get(participant.identity)}
                         name={

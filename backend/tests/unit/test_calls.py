@@ -216,7 +216,9 @@ def test_reconciliation_ends_disconnected_calls_after_join_grace(people, room_st
     p = people
     call_id = uuid.UUID(accepted(p))
     with Session(p.engine) as db:
-        db.get(Call, call_id).accepted_at = now() - timedelta(seconds=46)
+        call = db.get(Call, call_id)
+        call.accepted_at = now() - timedelta(seconds=46)
+        call.media_missing_since = call.accepted_at
         db.commit()
     if room_state == "missing":
         p.rooms.live.clear()
@@ -226,6 +228,46 @@ def test_reconciliation_ends_disconnected_calls_after_join_grace(people, room_st
     with Session(p.engine) as db:
         call = db.get(Call, call_id)
         assert call.status == (CallStatus.accepted if room_state == "healthy" else CallStatus.ended)
+
+
+def test_connected_call_gets_a_new_grace_window_for_each_network_interruption(people):
+    p = people
+    call_id = uuid.UUID(accepted(p))
+    p.rooms.live[call_id].num_participants = 2
+    maintain_calls(sessionmaker(p.engine), p.rooms)
+    with Session(p.engine) as db:
+        call = db.get(Call, call_id)
+        assert call.media_missing_since is None
+        call.accepted_at = now() - timedelta(minutes=5)
+        db.commit()
+    p.rooms.live[call_id].num_participants = 1
+    maintain_calls(sessionmaker(p.engine), p.rooms)
+    with Session(p.engine) as db:
+        call = db.get(Call, call_id)
+        assert call.status == CallStatus.accepted and call.media_missing_since is not None
+    p.rooms.live[call_id].num_participants = 2
+    maintain_calls(sessionmaker(p.engine), p.rooms)
+    with Session(p.engine) as db:
+        assert db.get(Call, call_id).media_missing_since is None
+    p.rooms.live[call_id].num_participants = 1
+    maintain_calls(sessionmaker(p.engine), p.rooms)
+    with Session(p.engine) as db:
+        call = db.get(Call, call_id)
+        assert call.status == CallStatus.accepted
+        call.media_missing_since = now() - timedelta(seconds=61)
+        db.commit()
+    maintain_calls(sessionmaker(p.engine), p.rooms)
+    with Session(p.engine) as db:
+        assert db.get(Call, call_id).status == CallStatus.ended
+    assert call_id not in p.rooms.live
+
+
+def test_explicit_end_does_not_wait_for_reconnect_grace(people):
+    p = people
+    call_id = uuid.UUID(accepted(p))
+    p.rooms.live[call_id].num_participants = 1
+    assert act(p, str(call_id), "end").status_code == 200
+    assert call_id not in p.rooms.live
 
 
 def test_worker_times_out_without_client_requests(people):

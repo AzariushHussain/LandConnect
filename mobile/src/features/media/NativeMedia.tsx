@@ -19,6 +19,8 @@ import { colors } from '../../ui/theme';
 import { MediaLifetime } from '../calls/media-lifetime';
 import type { CallKind } from '../calls/api';
 import type { mediaToken } from './token';
+import { cameraCapture, videoPublishDefaults } from './capture';
+import { startVideoDiagnostics } from './video-diagnostics';
 
 let previousCleanup = Promise.resolve();
 
@@ -40,9 +42,21 @@ export function NativeMedia({
   connecting?: ReactNode;
 }) {
   const [room] = useState(
-    () => new Room({ adaptiveStream: { pixelDensity: 'screen' }, dynacast: true }),
+    () =>
+      new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        videoCaptureDefaults: cameraCapture('user'),
+        publishDefaults: videoPublishDefaults,
+      }),
   );
   const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!__DEV__ || !ready || kind !== 'video') return;
+    return startVideoDiagnostics(room, (streams) =>
+      console.info('[call-video]', JSON.stringify({ streams })),
+    );
+  }, [ready, kind, room]);
   useEffect(() => {
     let audioStarted = false;
     let token: ReturnType<typeof mediaToken>;
@@ -102,7 +116,12 @@ export function NativeMedia({
           await room.localParticipant.setMicrophoneEnabled(true);
         },
         async () => {
-          if (kind === 'video') await room.localParticipant.setCameraEnabled(true);
+          if (kind === 'video')
+            await room.localParticipant.setCameraEnabled(
+              true,
+              cameraCapture('user'),
+              videoPublishDefaults,
+            );
         },
         async () => {
           if (alive) setReady(true);

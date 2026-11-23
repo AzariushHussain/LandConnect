@@ -8,12 +8,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import Call, CallStatus
 from app.models.common import now
-from app.services.calls import ACTIVE, close_pending, expire, finish
+from app.services.calls import ACTIVE, aware, close_pending, expire, finish
 from app.services.livekit import LiveKitRooms, MediaUnavailable
 from app.services.meeting_worker import maintain_meetings
 
 logger = logging.getLogger(__name__)
 JOIN_GRACE_SECONDS = 45
+RECONNECT_GRACE_SECONDS = 60
 
 
 def maintain_calls(factory, rooms: LiveKitRooms) -> None:
@@ -30,10 +31,7 @@ def maintain_calls(factory, rooms: LiveKitRooms) -> None:
         db.commit()
         active = db.scalars(
             select(Call)
-            .where(
-                Call.status == CallStatus.accepted,
-                Call.accepted_at <= now() - timedelta(seconds=JOIN_GRACE_SECONDS),
-            )
+            .where(Call.status == CallStatus.accepted)
             .order_by(Call.media_checked_at.asc().nullsfirst(), Call.id)
             .limit(10)
             .with_for_update(of=Call, skip_locked=True)
@@ -48,10 +46,22 @@ def maintain_calls(factory, rooms: LiveKitRooms) -> None:
                 for call in active:
                     room = live.get(call.id)
                     call.media_checked_at = now()
-                    if room is None or room.sid != call.room_sid or room.num_participants < 2:
+                    if room is None or room.sid != call.room_sid:
                         finish(db, call, CallStatus.ended)
                         if room is None:
                             call.room_closed_at = now()
+                    elif room.num_participants >= 2:
+                        call.media_missing_since = None
+                    elif call.media_missing_since is None:
+                        call.media_missing_since = now()
+                    else:
+                        grace = (
+                            JOIN_GRACE_SECONDS
+                            if call.media_missing_since == call.accepted_at
+                            else RECONNECT_GRACE_SECONDS
+                        )
+                        if aware(call.media_missing_since) + timedelta(seconds=grace) <= now():
+                            finish(db, call, CallStatus.ended)
                 db.commit()
         pending_ids = db.scalars(
             select(Call.id)

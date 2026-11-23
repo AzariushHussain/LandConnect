@@ -39,6 +39,7 @@ def finish(db: Session, call: Call, status: CallStatus, actor: uuid.UUID | None 
     needs_cleanup = call.status == CallStatus.accepted
     call.status = status
     call.ended_at = now()
+    call.media_missing_since = None
     if not needs_cleanup:
         call.room_closed_at = call.ended_at
     emit(db, call, actor)
@@ -186,6 +187,7 @@ def transition(
             raise Conflict("Call has expired")
         call.status = CallStatus.accepted
         call.accepted_at = now()
+        call.media_missing_since = call.accepted_at
         emit(db, call, actor)
     else:
         finish(db, call, target, actor)

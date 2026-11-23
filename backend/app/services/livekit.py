@@ -56,7 +56,7 @@ class LiveKitRooms:
                     name=name,
                     max_participants=capacity,
                     empty_timeout=empty_timeout,
-                    departure_timeout=20,
+                    departure_timeout=90,
                 ),
             )
         )

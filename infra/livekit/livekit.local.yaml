@@ -25,4 +25,4 @@ turn:
 room:
   auto_create: false
   empty_timeout: 60
-  departure_timeout: 20
+  departure_timeout: 90

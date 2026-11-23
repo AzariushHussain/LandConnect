@@ -24,6 +24,7 @@ class Call(Base):
     room_sid: Mapped[str | None] = mapped_column(String(64))
     room_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     media_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    media_missing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     caller = relationship("User", foreign_keys=[caller_id], lazy="joined")
     callee = relationship("User", foreign_keys=[callee_id], lazy="joined")
     __table_args__ = (
