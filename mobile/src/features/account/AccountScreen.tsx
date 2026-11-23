@@ -32,7 +32,7 @@ export function AccountScreen() {
   if (state.status !== 'signedIn') return null;
   const { user } = state;
   return (
-    <Screen>
+    <Screen bottomInset={false}>
       <Brand />
       <Heading
         title={`Hello, ${user.display_name}.`}

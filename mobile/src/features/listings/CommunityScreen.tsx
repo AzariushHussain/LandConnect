@@ -60,13 +60,6 @@ export function CommunityScreen() {
     <View style={styles.header}>
       <View style={styles.top}>
         <Text style={styles.eyebrow}>LANDCONNECT COMMUNITY</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/account')}
-          style={styles.account}
-        >
-          <Text style={styles.accountLabel}>My account</Text>
-        </Pressable>
       </View>
       <Heading
         title="Find your next place."
@@ -121,12 +114,11 @@ export function CommunityScreen() {
       )}
       {!!formError && <Notice error>{formError}</Notice>}
       <Action label="Search properties" onPress={() => search()} busy={busy} />
-      <Action label="Open chats" secondary onPress={() => router.push('/chats')} />
       <Action
         label="Explore properties on map"
         secondary
         onPress={() =>
-          router.push({ pathname: '/map', params: { filters: JSON.stringify(state.filters) } })
+          router.navigate({ pathname: '/map', params: { filters: JSON.stringify(state.filters) } })
         }
       />
       {(active > 0 || Object.values(draft).some(Boolean)) && (
@@ -173,7 +165,7 @@ export function CommunityScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <KeyboardAvoidingView
         style={styles.safe}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -229,7 +221,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   eyebrow: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1 },
-  account: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   accountLabel: { color: colors.green, fontWeight: '700', fontSize: 15 },
   filterToggle: { minHeight: 44, justifyContent: 'center' },
   filters: { backgroundColor: colors.pale, borderRadius: 16, padding: 16, gap: 14 },

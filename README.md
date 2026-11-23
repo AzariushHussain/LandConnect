@@ -4,6 +4,8 @@ A land marketplace mobile application, built in stages. The backend includes **a
 
 ## Android application
 
+The four main screens use a bottom navigation bar: **Listings, Chats, Map and My Account**. See the [navigation walkthrough](docs/22-mobile-navigation.md) and [step 9 PDF](docs/LandConnect%20Mobile%20Step%209%20Guide.pdf).
+
 Local demo data is available with **two Buyer, two Seller and two Broker accounts**. See [demo accounts and seed instructions](docs/21-demo-data.md) for login details, sample properties/chats/meeting invitations and the reusable `scripts/seed_demo.py` helper. Existing data is preserved.
 
 The application lives in [mobile/](mobile/README.md) and uses TypeScript, Expo Router and Expo development builds. Start the backend with the LAN helper, configure `mobile/.env` from its example, then use `npm ci` and `npm run android -- --device` from `mobile/` with an ADB-authorized Android phone. Subsequent development uses `npm start`. LiveKit uses native WebRTC modules and requires rebuilding the development client; Expo Go is not supported.

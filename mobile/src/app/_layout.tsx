@@ -143,8 +143,7 @@ export default function RootLayout() {
           <View style={{ flex: 1 }}>
             <Stack screenOptions={{ headerShadowVisible: false, headerTintColor: colors.ink }}>
               <Stack.Protected guard={state.status === 'signedIn'}>
-                <Stack.Screen name="index" options={{ title: 'LandConnect' }} />
-                <Stack.Screen name="account" options={{ title: 'My account' }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="calls" options={{ title: 'Call controls' }} />
                 <Stack.Screen name="meetings/index" options={{ title: 'Meetings' }} />
                 <Stack.Screen name="meetings/new" options={{ title: 'Host a meeting' }} />
@@ -152,8 +151,6 @@ export default function RootLayout() {
                 <Stack.Screen name="privacy/index" options={{ title: 'Privacy settings' }} />
                 <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked accounts' }} />
                 <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
-                <Stack.Screen name="map" options={{ title: 'Property map' }} />
-                <Stack.Screen name="chats/index" options={{ title: 'Chats' }} />
                 <Stack.Screen name="chats/new-group" options={{ title: 'New group' }} />
                 <Stack.Screen name="chats/[id]/index" options={{ title: 'Conversation' }} />
                 <Stack.Screen name="chats/[id]/info" options={{ title: 'Group information' }} />

@@ -25,6 +25,7 @@ const config: ExpoConfig = {
       },
     ],
     'expo-router',
+    'expo-font',
     'expo-dev-client',
     'expo-secure-store',
     '@livekit/react-native-expo-plugin',

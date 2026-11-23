@@ -14,9 +14,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from './theme';
 
-export function Screen({ children }: { children: ReactNode }) {
+export function Screen({
+  children,
+  bottomInset = true,
+}: {
+  children: ReactNode;
+  bottomInset?: boolean;
+}) {
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView
+      style={styles.safe}
+      edges={bottomInset ? ['left', 'right', 'bottom'] : ['left', 'right']}
+    >
       <KeyboardAvoidingView
         style={styles.safe}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

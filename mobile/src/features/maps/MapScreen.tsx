@@ -115,7 +115,7 @@ export function MapScreen({
     </View>
   );
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <FlatList
         ListHeaderComponent={header}
         data={state.features}

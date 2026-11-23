@@ -1,9 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
-import { Notice, Screen } from '../ui/components';
-import { routeFilters } from '../features/maps/api';
-import { readCoordinate, LngLat } from '../features/maps/geo';
-import { MapScreen } from '../features/maps/MapScreen';
-import { ListingFilters } from '../features/listings/filters';
+import { Notice, Screen } from '../../ui/components';
+import { routeFilters } from '../../features/maps/api';
+import { readCoordinate, LngLat } from '../../features/maps/geo';
+import { MapScreen } from '../../features/maps/MapScreen';
+import { ListingFilters } from '../../features/listings/filters';
 
 export default function MapRoute() {
   const params = useLocalSearchParams<{
@@ -29,7 +29,7 @@ export default function MapRoute() {
   }
   if (!parsed)
     return (
-      <Screen>
+      <Screen bottomInset={false}>
         <Notice error>{error}</Notice>
       </Screen>
     );

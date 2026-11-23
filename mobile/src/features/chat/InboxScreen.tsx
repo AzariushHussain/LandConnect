@@ -18,7 +18,7 @@ export function InboxScreen() {
   useEffect(() => inbox.stop, [inbox]);
   if (session.status !== 'signedIn') return null;
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <FlatList
         data={state.items}
         keyExtractor={(chat) => chat.id}

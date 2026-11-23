@@ -4,6 +4,8 @@ React Native/TypeScript Android application using Expo development builds and Ex
 
 ## Run on your Android phone
 
+Signed-in navigation uses four bottom tabs: **Listings, Chats, Map and My Account**. Details, conversation threads, forms, privacy and media controls open above these tabs. Read [mobile step 9](../docs/22-mobile-navigation.md) for route structure, safe-area handling and verification. After updating the route files, reload the development app if Metro keeps an old navigation state.
+
 Start the backend from the repository root:
 
 ```powershell
