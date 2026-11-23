@@ -27,12 +27,20 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-dev-client',
     'expo-secure-store',
+    '@livekit/react-native-expo-plugin',
+    [
+      '@config-plugins/react-native-webrtc',
+      {
+        cameraPermission: 'Use your camera during a LandConnect video call you join.',
+        microphonePermission: 'Use your microphone during a LandConnect call you join.',
+      },
+    ],
     [
       'expo-image-picker',
       {
         photosPermission: 'Choose photos to add to your property listing.',
-        cameraPermission: false,
-        microphonePermission: false,
+        cameraPermission: 'Use your camera during a LandConnect video call you join.',
+        microphonePermission: 'Use your microphone during a LandConnect call you join.',
       },
     ],
     './plugins/with-cmake-paths',

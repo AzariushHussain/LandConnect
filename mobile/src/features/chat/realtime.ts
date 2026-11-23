@@ -1,5 +1,18 @@
 import type { ChatSession } from './api';
 import { messageId, row, uuid } from './types';
+export type CallHint =
+  | { type: 'reconcile' }
+  | {
+      type:
+        | 'call.incoming'
+        | 'call.accepted'
+        | 'call.rejected'
+        | 'call.cancelled'
+        | 'call.missed'
+        | 'call.ended';
+      event_id: string;
+      call_id: string;
+    };
 export type ChatHint =
   | { type: 'reconcile' }
   | {
@@ -28,6 +41,7 @@ export class ChatRealtime {
   };
   private listeners = new Set<() => void>();
   private hints = new Set<(hint: ChatHint) => void>();
+  private callHints = new Set<(hint: CallHint) => void>();
   private socket: Socket | null = null;
   private generation = 0;
   private running = false;
@@ -53,6 +67,18 @@ export class ChatRealtime {
       this.hints.delete(listener);
     };
   };
+  onCallHint = (listener: (hint: CallHint) => void) => {
+    this.callHints.add(listener);
+    return () => {
+      this.callHints.delete(listener);
+    };
+  };
+  private duplicate(id: string) {
+    if (this.seen.has(id)) return true;
+    this.seen.add(id);
+    if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value!);
+    return false;
+  }
   private update(status: typeof this.state.status) {
     this.state = { status };
     for (const listener of this.listeners) listener();
@@ -151,6 +177,7 @@ export class ChatRealtime {
           this.update('ready');
           watch(45000);
           this.emit({ type: 'reconcile' });
+          for (const listener of this.callHints) listener({ type: 'reconcile' });
           return;
         }
         if (this.state.status !== 'ready') {
@@ -162,12 +189,35 @@ export class ChatRealtime {
           socket.send(JSON.stringify({ type: 'pong' }));
           return;
         }
-        // Call/meeting notifications share this socket; their clients are added in the calling step.
-        if (
-          typeof data.type === 'string' &&
-          (data.type.startsWith('call.') || data.type.startsWith('meeting.'))
-        )
+        if (typeof data.type === 'string' && data.type.startsWith('meeting.')) return;
+        if (typeof data.type === 'string' && data.type.startsWith('call.')) {
+          if (
+            ![
+              'call.incoming',
+              'call.accepted',
+              'call.rejected',
+              'call.cancelled',
+              'call.missed',
+              'call.ended',
+            ].includes(data.type) ||
+            typeof data.event_id !== 'string' ||
+            !uuid(data.event_id) ||
+            typeof data.call_id !== 'string' ||
+            !uuid(data.call_id) ||
+            (data.actor_id != null && (typeof data.actor_id !== 'string' || !uuid(data.actor_id)))
+          ) {
+            fail(true);
+            return;
+          }
+          if (this.duplicate(data.event_id)) return;
+          for (const listener of this.callHints)
+            listener({
+              type: data.type as Exclude<CallHint, { type: 'reconcile' }>['type'],
+              event_id: data.event_id,
+              call_id: data.call_id,
+            });
           return;
+        }
         if (
           !['message.created', 'conversation.updated', 'membership.removed'].includes(
             String(data.type),
@@ -185,9 +235,7 @@ export class ChatRealtime {
           fail(true);
           return;
         }
-        if (this.seen.has(data.event_id)) return;
-        this.seen.add(data.event_id);
-        if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value!);
+        if (this.duplicate(data.event_id)) return;
         this.emit({
           type: data.type as 'message.created' | 'conversation.updated' | 'membership.removed',
           event_id: data.event_id,

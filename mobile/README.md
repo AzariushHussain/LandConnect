@@ -1,6 +1,6 @@
 # LandConnect mobile
 
-React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, listings/photos/maps/location selection, direct/group messaging, group administration, privacy preferences and blocked-account controls. FastAPI remains the source of permissions and application data.
+React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, listings/photos/maps/location selection, direct/group messaging, group administration, privacy/block controls and foreground one-to-one LiveKit audio/video calling. FastAPI remains the source of permissions and application data.
 
 ## Run on your Android phone
 
@@ -27,14 +27,14 @@ The phone and PC must share Wi-Fi. Set `EXPO_PUBLIC_API_URL` in `mobile/.env` to
 
 Once the development build is installed, use `npm start`. Open the installed LandConnect development client and scan the Metro QR code or use its server URL. Metro uses port 8081 and must also be reachable from the phone. Rebuild after changing native dependencies/app configuration; ordinary TypeScript edits use Metro reloads.
 
-This project uses a **development build**, not Expo Go. LiveKit will require native WebRTC modules when calling is implemented. No Expo account, EAS Cloud build, LiveKit Cloud account or AI agent is needed for local Android development. iOS builds require macOS and are not verified at this checkpoint.
+This project uses a **development build**, not Expo Go. LiveKit includes native WebRTC modules; rebuild/reinstall the development client after this calling update. No Expo account, EAS Cloud build, LiveKit Cloud account or AI agent is needed for local Android development. iOS builds require macOS and are not verified at this checkpoint.
 
 ## Build without a connected device
 
 ```powershell
-npm run prebuild:android
+npx expo prebuild --platform android --no-install --clean
 $env:NODE_ENV = 'development'
-.\android\gradlew.bat -p android :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --console=plain
+.\android\gradlew.bat -p android :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --max-workers=2 --console=plain
 ```
 
 The ARM64 development APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. It needs Metro to serve the JavaScript application. This is not a standalone release/demo APK. Omit the architecture property, or choose a matching architecture, for other devices/emulators.
@@ -58,7 +58,7 @@ Read [the detailed walkthrough](../docs/13-mobile-foundation.md) for the file-by
 
 Read [mobile step 2](../docs/14-mobile-listings.md) for community browsing, filters, exact decimal values, pagination races, photos and property details. After sign-in the community is the home route; My account opens the existing profile screen.
 
-Read [mobile step 3](../docs/15-mobile-property-management.md) for owner management, forms, photos, session/ownership checks and uncertain-write recovery. Sellers and brokers open My account > My properties. Only active listings are public. Photo changes save immediately; unsaved field edits are separate. Native photo dependencies require rebuilding the development client. The image picker blocks camera/microphone permissions at this stage; remove those blocks and configure calling permissions when integrating LiveKit.
+Read [mobile step 3](../docs/15-mobile-property-management.md) for owner management, forms, photos, session/ownership checks and uncertain-write recovery. Sellers and brokers open My account > My properties. Only active listings are public. Photo changes save immediately; unsaved field edits are separate. Native photo dependencies require rebuilding the development client. The calling stage now configures camera/microphone access; property photo selection still uses the library picker.
 
 Read [mobile step 4](../docs/16-mobile-maps.md) for MapLibre/OpenFreeMap, map filters/bounds, coordinate selection and optional foreground device location. The default style requires no API key; `EXPO_PUBLIC_MAP_STYLE_URL` optionally selects another public HTTPS style. The external tile provider receives the viewed area. Opening maps does not request GPS permission; nearby/location buttons do. The map shows up to 100 active properties per searched area, with the matching total. Picker confirmation updates the form; save or publish to persist. Manual coordinates remain available. New native map/location modules require rebuilding the client.
 
@@ -70,7 +70,9 @@ uv run --project backend python scripts/check_mobile_listings.py
 
 ## Current verification
 
-The foundation development APK was installed and reached sign-in. The chat stage built the current native development client. This privacy stage introduces no native dependencies/config changes and uses Metro without another native build. Phone UI checks remain skipped at the user's request. The suite has 104 passing tests; backend chat/call/meeting test files pass 66 tests. TypeScript/lint/format, Android bundle export and all 20 Expo Doctor checks pass. Real phone and live Docker/LAN Redis/media checks remain outstanding. No developer database/upload volumes were reset. Concurrent property/privacy edits follow last-write-wins behavior. Four moderate npm audit findings remain unchanged; no forced downgrade was applied.
+The foundation development APK was installed and reached sign-in. This calling update adds native modules and needs a rebuilt client. Phone UI checks remain skipped at the user's request. The suite has 122 passing tests; backend chat/call/meeting test files pass 66 tests. TypeScript/lint/format, Android bundle export and all 20 Expo Doctor checks pass. The real-route call probe uses fake room operations and an injected authorized socket event; it does not test live Redis/media. Real phone and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Concurrent property/privacy edits follow last-write-wins behavior. Five moderate npm audit entries propagate the minimatch/Expo fingerprint issue, now through the WebRTC config plugin too; no high/critical entries or forced downgrade.
+
+The calling-stage ARM64 native APK built successfully in 7m 33s (539 tasks), at `android/app/build/outputs/apk/debug/app-debug.apk`, 122,454,695 bytes. Packaged permission inspection confirms `CAMERA` and `RECORD_AUDIO`. It was not installed on the phone in this step and still requires Metro.
 
 Read [mobile step 5](../docs/17-mobile-chat.md) for chat screens, group permissions, WebSocket authentication, missed-hint recovery and retry semantics. Open chats from the community or Message owner from a property. Group people are selected from existing conversation memberships. Drafts and pending retries are memory-only. Retry same message preserves its UUID/body; group creation, listing creation and uploads have no automatic retry. Refresh before repeating an uncertain creation. No background push, unread counts or delivery/read receipts are implemented.
 
@@ -84,3 +86,13 @@ uv run --project backend python -m pytest backend/tests/unit/test_chat.py -q
 The backend now accepts its exact HTTP(S) API origin in the socket handler, which React Native Android sends by default. Other origins still need the configured allowlist, and every socket still requires JWT authentication. Rebuild/restart the API through the existing LAN helper before real chat testing.
 
 Read [mobile step 6](../docs/18-mobile-privacy.md) for incoming-message/call preferences, confirmed saves, session safety and blocked-account controls. Open My account > Privacy settings. Blocking is also available from listings and chats; review/unblock through Blocked accounts. Existing groups/history remain shared. Switches edit a local draft until Save; an uncertain save requires refresh before further edits. The chat contract probe now verifies real privacy/block routes and enforcement too.
+
+Read [mobile step 7](../docs/19-mobile-calling.md) for the call state machine, native configuration, session safety and cleanup. Start Audio call/Video call from a property owner or direct-chat participant. Use the incoming banner or My account > Call controls to return. Accept and Join call media are separate actions; only Join requests native permissions. Keep the app foregrounded: backgrounding stops media and attempts to finish the call. Failed verification stops media until an explicit rejoin. No locked-screen calling, background call service, offline push, recording or group meeting UI is included yet.
+
+For existing native checkouts, use clean prebuild with Gradle stopped to remove old generated camera/microphone permission blocks. Keep native changes in app config/plugins. Production requires HTTPS API/WSS media origins; development permits private-LAN/loopback HTTP/WS. Rebuild/install before testing; the existing phone installation lacks these native modules.
+
+Run the new contract probe from the repository root:
+
+```powershell
+uv run --project backend python scripts/check_mobile_calls.py
+```

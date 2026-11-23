@@ -171,3 +171,33 @@ test('stale sockets and stopped sessions cannot deliver later hints', () => {
   assert.equal(f.sockets.length, 2);
   f.transport.stop();
 });
+test('call hints share the authenticated socket, deduplicate and forward metadata only', () => {
+  const f = fixture();
+  const calls: unknown[] = [],
+    chats: unknown[] = [];
+  f.transport.onCallHint((hint) => calls.push(hint));
+  f.transport.onHint((hint) => chats.push(hint));
+  try {
+    f.sockets[0]!.open();
+    f.sockets[0]!.receive({ type: 'ready', user_id: actor });
+    const event = {
+      type: 'call.incoming',
+      call_id: chatId,
+      event_id: listingId(500),
+      actor_id: actor,
+      token: 'private',
+    };
+    f.sockets[0]!.receive(event);
+    f.sockets[0]!.receive(event);
+    assert.deepEqual(calls, [
+      { type: 'reconcile' },
+      { type: 'call.incoming', call_id: chatId, event_id: listingId(500) },
+    ]);
+    assert.equal(chats.length, 1);
+    assert.equal(f.sockets.length, 1);
+    f.sockets[0]!.receive({ ...event, call_id: 'bad' });
+    assert.equal(f.transport.getSnapshot().status, 'paused');
+  } finally {
+    f.transport.stop();
+  }
+});

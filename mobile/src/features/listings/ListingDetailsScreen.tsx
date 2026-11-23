@@ -10,6 +10,7 @@ import { Listing } from './types';
 import { router } from 'expo-router';
 import { MessageOwner } from '../chat/MessageOwner';
 import { BlockButton } from '../privacy/BlockButton';
+import { CallButtons } from '../calls/CallButtons';
 
 type DetailState =
   | { status: 'loading' }
@@ -135,6 +136,7 @@ export function ListingDetailsScreen({ id }: { id: string }) {
         <Text style={styles.role}>{listing.owner.role}</Text>
         <Notice>Personal contact details stay private.</Notice>
         <MessageOwner ownerId={listing.owner.id} />
+        <CallButtons peerId={listing.owner.id} />
         <BlockButton peer={listing.owner} />
       </View>
       <Action label="Refresh property" secondary onPress={reload} />
