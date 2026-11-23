@@ -8,6 +8,7 @@ import { ManagementApi } from '../features/management/api';
 import { MapsApi } from '../features/maps/api';
 import { ChatApi } from '../features/chat/api';
 import { ChatRealtime } from '../features/chat/realtime';
+import { PrivacyApi } from '../features/privacy/api';
 
 export const client = new ApiClient(validateApiUrl(process.env.EXPO_PUBLIC_API_URL, __DEV__));
 export const authApi = new AuthApi(client);
@@ -16,4 +17,5 @@ export const listingsApi = new ListingsApi(client);
 export const managementApi = new ManagementApi(client, session);
 export const mapsApi = new MapsApi(client);
 export const chatApi = new ChatApi(client, session);
+export const privacyApi = new PrivacyApi(client, session);
 export const realtime = new ChatRealtime(client.baseUrl, session, (url) => new WebSocket(url));

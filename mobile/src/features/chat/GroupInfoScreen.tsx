@@ -9,6 +9,7 @@ import { PeoplePicker } from './PeoplePicker';
 import { useChatUpdates } from './use-chat-updates';
 import { ChatHint } from './realtime';
 import { ApiError } from '../../api/client';
+import { BlockButton } from '../privacy/BlockButton';
 
 export function GroupInfoScreen({ id, actor }: { id: string; actor: string }) {
   const [chat, setChat] = useState<Conversation | null>(null),
@@ -155,6 +156,7 @@ export function GroupInfoScreen({ id, actor }: { id: string; actor: string }) {
                 {member.user.display_name}
                 {member.user.id === actor ? ' (you)' : ''}
               </Text>
+              <BlockButton peer={member.user} />
               <Notice>
                 {member.user.role} · {member.user.id === chat.owner_id ? 'Owner' : member.role}
               </Notice>

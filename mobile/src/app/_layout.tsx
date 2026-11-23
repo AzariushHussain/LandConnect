@@ -23,6 +23,7 @@ const theme = {
 
 export default function RootLayout() {
   const state = useSession();
+  const realtimeToken = state.status === 'signedIn' ? session.access()?.token : null;
   useEffect(() => {
     void session.restore();
   }, []);
@@ -38,7 +39,7 @@ export default function RootLayout() {
     };
   }, [state]);
   useEffect(() => {
-    if (state.status !== 'signedIn') {
+    if (!realtimeToken) {
       realtime.stop();
       return;
     }
@@ -52,7 +53,7 @@ export default function RootLayout() {
       listener.remove();
       realtime.stop();
     };
-  }, [state]);
+  }, [realtimeToken]);
 
   return (
     <SafeAreaProvider>
@@ -87,6 +88,8 @@ export default function RootLayout() {
             <Stack.Protected guard={state.status === 'signedIn'}>
               <Stack.Screen name="index" options={{ title: 'LandConnect' }} />
               <Stack.Screen name="account" options={{ title: 'My account' }} />
+              <Stack.Screen name="privacy/index" options={{ title: 'Privacy settings' }} />
+              <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked accounts' }} />
               <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
               <Stack.Screen name="map" options={{ title: 'Property map' }} />
               <Stack.Screen name="chats/index" options={{ title: 'Chats' }} />

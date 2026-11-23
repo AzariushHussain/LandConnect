@@ -1,13 +1,34 @@
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { session } from '../../application/services';
+import { useCallback, useState } from 'react';
+import { privacyApi, session } from '../../application/services';
 import { useSession } from '../../application/use-session';
-import { Action, Brand, Heading, Screen } from '../../ui/components';
+import { Action, Brand, Heading, Notice, Screen } from '../../ui/components';
 import { colors } from '../../ui/theme';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { canManage } from '../management/form';
 
 export function AccountScreen() {
   const state = useSession();
+  const [privacyError, setPrivacyError] = useState('');
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      privacyApi.current().then(
+        () => {
+          if (active) setPrivacyError('');
+        },
+        () => {
+          if (active)
+            setPrivacyError(
+              'Could not refresh privacy preferences. The values shown were last confirmed on this device.',
+            );
+        },
+      );
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
   if (state.status !== 'signedIn') return null;
   const { user } = state;
   return (
@@ -33,7 +54,9 @@ export function AccountScreen() {
         </Text>
         <Text style={styles.row}>Messages: {user.allow_messages ? 'Allowed' : 'Off'}</Text>
         <Text style={styles.row}>Incoming calls: {user.allow_calls ? 'Allowed' : 'Off'}</Text>
-        <Text style={styles.note}>These are your current account preferences.</Text>
+        <Text style={styles.note}>Last confirmed account preferences.</Text>
+        {!!privacyError && <Notice error>{privacyError}</Notice>}
+        <Action label="Privacy settings" secondary onPress={() => router.push('/privacy')} />
       </View>
       <Action
         secondary

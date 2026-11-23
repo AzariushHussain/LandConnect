@@ -141,4 +141,35 @@ export class SessionController {
     if (this.saved?.token === token)
       await this.signOut('Your session expired. Please sign in again.');
   }
+
+  updatePrivacy(
+    token: string,
+    actor: string,
+    flags: { allow_messages: boolean; allow_calls: boolean },
+  ) {
+    const access = this.access();
+    if (
+      !access ||
+      access.token !== token ||
+      access.user.id !== actor ||
+      typeof flags.allow_messages !== 'boolean' ||
+      typeof flags.allow_calls !== 'boolean'
+    )
+      return false;
+    if (
+      access.user.allow_messages === flags.allow_messages &&
+      access.user.allow_calls === flags.allow_calls
+    )
+      return true;
+    if (this.state.status === 'signedIn')
+      this.update({
+        ...this.state,
+        user: {
+          ...this.state.user,
+          allow_messages: flags.allow_messages,
+          allow_calls: flags.allow_calls,
+        },
+      });
+    return true;
+  }
 }

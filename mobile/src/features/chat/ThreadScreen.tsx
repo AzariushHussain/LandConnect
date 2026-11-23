@@ -20,6 +20,7 @@ import { Thread } from './thread';
 import { ChatHint } from './realtime';
 import { title } from './types';
 import { RealtimeNotice, useChatUpdates } from './use-chat-updates';
+import { BlockButton } from '../privacy/BlockButton';
 
 export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
   const [thread] = useState(() => new Thread(id, actor, chatApi, randomUUID));
@@ -68,6 +69,10 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
         <View style={styles.header}>
           <Text style={styles.title}>{state.chat ? title(state.chat, actor) : 'Conversation'}</Text>
           <RealtimeNotice />
+          {state.chat?.kind === 'direct' &&
+            state.chat.members
+              .filter((member) => member.user.id !== actor)
+              .map((member) => <BlockButton key={member.user.id} peer={member.user} />)}
           {!!state.error && <Notice error>{state.error}</Notice>}
           {!state.unavailable && (
             <Action

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { conversation, history, message, permissions } from '../src/features/chat/types';
+import { blockedPage, preferences } from '../src/features/privacy/api';
 const data = JSON.parse(readFileSync(0, 'utf8'));
 const direct = conversation(data.direct, data.actor);
 assert.equal(direct.kind, 'direct');
@@ -27,4 +28,23 @@ assert.equal('body' in data.hint, false);
 assert.equal(data.inbox.items.length, 1);
 console.log(
   'PASS: real direct/group/history/send-retry/permissions routes and socket authentication, heartbeat and authorized notification satisfy the mobile contract. Redis relay delivery is outside this isolated probe.',
+);
+assert.deepEqual(preferences(data.privacyBefore, data.actor), {
+  allow_messages: true,
+  allow_calls: true,
+});
+assert.deepEqual(preferences(data.privacyMessagesOff, data.actor), {
+  allow_messages: false,
+  allow_calls: true,
+});
+assert.deepEqual(preferences(data.privacyAfter, data.actor), {
+  allow_messages: true,
+  allow_calls: false,
+});
+const blocked = blockedPage(data.blocked, data.actor, 0);
+assert.equal(blocked.length, 1);
+assert.equal('email' in blocked[0]!, false);
+assert.equal(blockedPage(data.unblocked, data.actor, 0).length, 0);
+console.log(
+  'PASS: real privacy/strict-boolean/private-block-list/block/unblock routes satisfy mobile parsers and enforce direct-message/invitation restrictions while retaining shared groups/history.',
 );

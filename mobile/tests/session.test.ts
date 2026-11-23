@@ -218,3 +218,50 @@ test('rejecting an old request token cannot erase a newly signed-in session', as
   assert.equal(f.session.access(), null);
   assert.equal(f.stored(), null);
 });
+
+test('confirmed privacy changes update only flags without rotating credentials or saving profile data', async () => {
+  const f = fixture();
+  await f.session.signIn(credentials);
+  const before = f.session.getSnapshot(),
+    stored = f.stored();
+  assert.equal(
+    f.session.updatePrivacy('token', user.id, {
+      allow_messages: false,
+      allow_calls: false,
+      role: 'seller',
+    } as { allow_messages: boolean; allow_calls: boolean }),
+    true,
+  );
+  const state = f.session.getSnapshot();
+  assert.equal(state.status, 'signedIn');
+  if (state.status === 'signedIn' && before.status === 'signedIn') {
+    assert.equal(state.user.role, 'buyer');
+    assert.equal(state.expiresAt, before.expiresAt);
+    assert.equal(state.user.allow_messages, false);
+  }
+  assert.equal(f.stored(), stored);
+  assert.equal(f.session.access()?.token, 'token');
+  const current = f.session.getSnapshot();
+  f.session.updatePrivacy('token', user.id, { allow_messages: false, allow_calls: false });
+  assert.equal(f.session.getSnapshot(), current);
+});
+
+test('privacy updates cannot change an expired, wrong-account or replaced session', async () => {
+  const f = fixture();
+  await f.session.signIn(credentials);
+  const current = f.session.getSnapshot();
+  assert.equal(
+    f.session.updatePrivacy('old-token', user.id, { allow_messages: false, allow_calls: false }),
+    false,
+  );
+  assert.equal(
+    f.session.updatePrivacy('token', 'another-user', { allow_messages: false, allow_calls: false }),
+    false,
+  );
+  assert.equal(f.session.getSnapshot(), current);
+  await f.session.signOut();
+  assert.equal(
+    f.session.updatePrivacy('token', user.id, { allow_messages: false, allow_calls: false }),
+    false,
+  );
+});

@@ -1,6 +1,6 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, and group administration.
+A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, group administration, privacy preferences and blocked-account controls.
 
 ## Android application
 
@@ -8,7 +8,9 @@ The application lives in [mobile/](mobile/README.md) and uses TypeScript, Expo R
 
 Read the [first mobile walkthrough](docs/13-mobile-foundation.md) or [PDF guide](docs/LandConnect%20Mobile%20Step%201%20Guide.pdf) for authentication/session flows, and the [mobile listings walkthrough](docs/14-mobile-listings.md) or [step 2 PDF](docs/LandConnect%20Mobile%20Step%202%20Guide.pdf) for browsing, filters and details. The [property management walkthrough](docs/15-mobile-property-management.md) and [step 3 PDF](docs/LandConnect%20Mobile%20Step%203%20Guide.pdf) explain editing, publishing and photos. The [map walkthrough](docs/16-mobile-maps.md) and [step 4 PDF](docs/LandConnect%20Mobile%20Step%204%20Guide.pdf) explain MapLibre/OpenFreeMap, viewport search, location selection, permissions and verification limits. Chat and calling interfaces follow stepwise.
 
-The [mobile chat walkthrough](docs/17-mobile-chat.md) and [step 5 PDF](docs/LandConnect%20Mobile%20Step%205%20Guide.pdf) explain direct/group chat, send retry identity, cursor recovery, foreground WebSocket lifecycle, group permissions and native-origin compatibility. Mobile privacy controls and calling follow next. Device/live Redis messaging checks remain outstanding; automated checks use isolated routes and protocol fixtures.
+The [mobile chat walkthrough](docs/17-mobile-chat.md) and [step 5 PDF](docs/LandConnect%20Mobile%20Step%205%20Guide.pdf) explain direct/group chat, send retry identity, cursor recovery, foreground WebSocket lifecycle, group permissions and native-origin compatibility. Device/live Redis messaging checks remain outstanding; automated checks use isolated routes and protocol fixtures.
+
+The [mobile privacy walkthrough](docs/18-mobile-privacy.md) and [step 6 PDF](docs/LandConnect%20Mobile%20Step%206%20Guide.pdf) explain confirmed preference saves, session updates and block/unblock controls. Open My account > Privacy settings; block actions also appear on property owners and chat participants. Existing groups/history remain shared after a block. LiveKit calling is the next mobile stage.
 
 ## Calling architecture
 

@@ -12,7 +12,7 @@ export type RequestOptions = {
   body?: unknown;
   token?: string;
   form?: FormData;
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 };
 
 export class ApiClient {

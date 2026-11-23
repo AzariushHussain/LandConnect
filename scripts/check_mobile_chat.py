@@ -28,6 +28,7 @@ os.environ["LIVEKIT_API_SECRET"] = (
 
 from app.api.errors import service_error
 from app.api.routes import conversations, websocket
+from app.api.routes.users import router as users_router
 from app.core.config import get_settings
 from app.core.errors import ServiceError
 from app.core.security import create_access_token
@@ -56,6 +57,7 @@ def main() -> None:
     app = FastAPI(lifespan=lifespan)
     app.state.chat = hub
     app.include_router(conversations.router)
+    app.include_router(users_router)
     app.include_router(websocket.router)
     app.add_exception_handler(ServiceError, service_error)
 
@@ -244,6 +246,120 @@ def main() -> None:
                 == 204
             )
             payload["inbox"] = client.get("/conversations", headers=headers[0]).json()
+            payload["privacyBefore"] = client.get(
+                "/users/me", headers=headers[0]
+            ).json()
+            off = client.patch(
+                "/users/me/privacy", json={"allow_messages": False}, headers=headers[0]
+            )
+            assert off.status_code == 200 and off.json()["allow_calls"] is True
+            payload["privacyMessagesOff"] = off.json()
+            assert (
+                client.post(
+                    path,
+                    json={"client_id": str(uuid.uuid4()), "body": "Denied incoming"},
+                    headers=headers[1],
+                ).status_code
+                == 403
+            )
+            assert (
+                client.post(
+                    path,
+                    json={"client_id": str(uuid.uuid4()), "body": "Allowed outgoing"},
+                    headers=headers[0],
+                ).status_code
+                == 201
+            )
+            for invalid in [
+                {"allow_calls": "false"},
+                {"role": "broker"},
+                {},
+                {"allow_messages": None},
+            ]:
+                assert (
+                    client.patch(
+                        "/users/me/privacy", json=invalid, headers=headers[0]
+                    ).status_code
+                    == 422
+                )
+            assert client.get("/users/me/blocks").status_code == 401
+            assert (
+                client.put(f"/users/me/blocks/{ids[0]}", headers=headers[0]).status_code
+                == 422
+            )
+            shared = client.post(
+                "/conversations/groups",
+                json={"name": "Shared before block", "member_ids": [ids[1]]},
+                headers=headers[0],
+            )
+            assert shared.status_code == 201
+            block_path = f"/users/me/blocks/{ids[1]}"
+            assert client.put(block_path, headers=headers[0]).status_code == 204
+            assert client.put(block_path, headers=headers[0]).status_code == 204
+            payload["blocked"] = client.get(
+                "/users/me/blocks?limit=20&offset=0", headers=headers[0]
+            ).json()
+            assert (
+                client.get("/users/me/blocks", headers=headers[1]).json()["items"] == []
+            )
+            for sender in [0, 1]:
+                assert (
+                    client.post(
+                        path,
+                        json={"client_id": str(uuid.uuid4()), "body": "Blocked"},
+                        headers=headers[sender],
+                    ).status_code
+                    == 403
+                )
+            assert client.get(path, headers=headers[0]).status_code == 200
+            assert (
+                client.post(
+                    f"/conversations/{shared.json()['id']}/messages",
+                    json={
+                        "client_id": str(uuid.uuid4()),
+                        "body": "Shared group still works",
+                    },
+                    headers=headers[1],
+                ).status_code
+                == 201
+            )
+            assert (
+                client.post(
+                    "/conversations/groups",
+                    json={"name": "Blocked pair", "member_ids": ids[:2]},
+                    headers=headers[2],
+                ).status_code
+                == 403
+            )
+            assert client.delete(block_path, headers=headers[0]).status_code == 204
+            assert client.delete(block_path, headers=headers[0]).status_code == 204
+            payload["unblocked"] = client.get(
+                "/users/me/blocks?limit=20&offset=0", headers=headers[0]
+            ).json()
+            # Unblocking alone does not override the recipient's disabled incoming messages.
+            assert (
+                client.post(
+                    path,
+                    json={"client_id": str(uuid.uuid4()), "body": "Still disabled"},
+                    headers=headers[1],
+                ).status_code
+                == 403
+            )
+            on = client.patch(
+                "/users/me/privacy",
+                json={"allow_messages": True, "allow_calls": False},
+                headers=headers[0],
+            )
+            assert on.status_code == 200
+            payload["privacyAfter"] = on.json()
+            assert (
+                client.post(
+                    path,
+                    json={"client_id": str(uuid.uuid4()), "body": "Allowed again"},
+                    headers=headers[1],
+                ).status_code
+                == 201
+            )
         subprocess.run(
             ["node", "--import", "tsx", "tests/verify-chat-contract.ts"],
             cwd=ROOT / "mobile",
