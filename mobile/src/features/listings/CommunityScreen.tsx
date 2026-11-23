@@ -121,6 +121,7 @@ export function CommunityScreen() {
       )}
       {!!formError && <Notice error>{formError}</Notice>}
       <Action label="Search properties" onPress={() => search()} busy={busy} />
+      <Action label="Open chats" secondary onPress={() => router.push('/chats')} />
       <Action
         label="Explore properties on map"
         secondary

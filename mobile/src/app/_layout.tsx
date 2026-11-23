@@ -3,7 +3,7 @@ import { ActivityIndicator, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, DefaultTheme, Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { session } from '../application/services';
+import { realtime, session } from '../application/services';
 import { useSession } from '../application/use-session';
 import { Action, Brand, Notice, Screen } from '../ui/components';
 import { colors } from '../ui/theme';
@@ -35,6 +35,22 @@ export default function RootLayout() {
     return () => {
       listener.remove();
       clearTimeout(timer);
+    };
+  }, [state]);
+  useEffect(() => {
+    if (state.status !== 'signedIn') {
+      realtime.stop();
+      return;
+    }
+    const update = () => {
+      if (AppState.currentState === 'active') realtime.start();
+      else realtime.stop();
+    };
+    update();
+    const listener = AppState.addEventListener('change', update);
+    return () => {
+      listener.remove();
+      realtime.stop();
     };
   }, [state]);
 
@@ -73,6 +89,10 @@ export default function RootLayout() {
               <Stack.Screen name="account" options={{ title: 'My account' }} />
               <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
               <Stack.Screen name="map" options={{ title: 'Property map' }} />
+              <Stack.Screen name="chats/index" options={{ title: 'Chats' }} />
+              <Stack.Screen name="chats/new-group" options={{ title: 'New group' }} />
+              <Stack.Screen name="chats/[id]/index" options={{ title: 'Conversation' }} />
+              <Stack.Screen name="chats/[id]/info" options={{ title: 'Group information' }} />
               <Stack.Protected guard={state.status === 'signedIn' && canManage(state.user.role)}>
                 <Stack.Screen name="manage/index" options={{ title: 'My properties' }} />
                 <Stack.Screen name="manage/new" options={{ title: 'Add property' }} />

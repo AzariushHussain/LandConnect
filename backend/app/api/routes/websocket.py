@@ -22,7 +22,13 @@ HEARTBEAT_SECONDS = 15
 @router.websocket("/ws/chat")
 async def chat_socket(socket: WebSocket, hub: Annotated[ChatHub, Depends(get_chat)]) -> None:
     origin = socket.headers.get("origin")
-    if origin and origin not in hub.settings.cors_origins:
+    # Android's native WebSocket sends the HTTP(S) origin of the target API.
+    api_origin = str(
+        socket.url.replace(
+            scheme="https" if socket.url.scheme == "wss" else "http", path="", query=""
+        )
+    )
+    if origin and origin not in hub.settings.cors_origins and origin != api_origin:
         await socket.close(code=1008)
         return
     await socket.accept()

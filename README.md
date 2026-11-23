@@ -1,12 +1,14 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, community browsing, seller/broker property management, photos, map browsing and confirmed location selection with optional device location.
+A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, and group administration.
 
 ## Android application
 
 The application lives in [mobile/](mobile/README.md) and uses TypeScript, Expo Router and Expo development builds. Start the backend with the LAN helper, configure `mobile/.env` from its example, then use `npm ci` and `npm run android -- --device` from `mobile/` with an ADB-authorized Android phone. Subsequent development uses `npm start`. Expo Go is not the supported workflow; later LiveKit integration needs native WebRTC modules.
 
 Read the [first mobile walkthrough](docs/13-mobile-foundation.md) or [PDF guide](docs/LandConnect%20Mobile%20Step%201%20Guide.pdf) for authentication/session flows, and the [mobile listings walkthrough](docs/14-mobile-listings.md) or [step 2 PDF](docs/LandConnect%20Mobile%20Step%202%20Guide.pdf) for browsing, filters and details. The [property management walkthrough](docs/15-mobile-property-management.md) and [step 3 PDF](docs/LandConnect%20Mobile%20Step%203%20Guide.pdf) explain editing, publishing and photos. The [map walkthrough](docs/16-mobile-maps.md) and [step 4 PDF](docs/LandConnect%20Mobile%20Step%204%20Guide.pdf) explain MapLibre/OpenFreeMap, viewport search, location selection, permissions and verification limits. Chat and calling interfaces follow stepwise.
+
+The [mobile chat walkthrough](docs/17-mobile-chat.md) and [step 5 PDF](docs/LandConnect%20Mobile%20Step%205%20Guide.pdf) explain direct/group chat, send retry identity, cursor recovery, foreground WebSocket lifecycle, group permissions and native-origin compatibility. Mobile privacy controls and calling follow next. Device/live Redis messaging checks remain outstanding; automated checks use isolated routes and protocol fixtures.
 
 ## Calling architecture
 
@@ -169,7 +171,7 @@ Group owner/admin roles are separate from buyer/seller/broker roles. Owners cann
 
 Blocks in either direction and a recipient's `allow_messages=false` prevent direct sends and new invitations. A new group or member addition cannot introduce a blocked pair. An existing shared group remains shared if someone later blocks another member or disables incoming messages: leave the group to stop sharing it. Changing these settings does not erase existing direct history. Call privacy is enforced as described below.
 
-Connect a WebSocket to `ws://localhost:8000/ws/chat`. Within five seconds, send `{"type":"auth","token":"<access_token>"}` as the first frame. The server replies `{"type":"ready","user_id":"..."}`. Tokens never appear in the URL. Browser origins must be in `CORS_ORIGINS`; native clients may omit Origin. Send `{"type":"pong"}` when the server sends `{"type":"ping"}`. Message writes stay on REST.
+Connect a WebSocket to `ws://localhost:8000/ws/chat`. Within five seconds, send `{"type":"auth","token":"<access_token>"}` as the first frame. The server replies `{"type":"ready","user_id":"..."}`. Tokens never appear in the URL. Origins must be in `CORS_ORIGINS` or match the target API's own HTTP(S) origin; native clients may omit Origin. The exact API origin also supports React Native Android's automatic Origin header. Send `{"type":"pong"}` when the server sends `{"type":"ping"}`. Message writes stay on REST.
 
 Notifications include `event_id`, `type`, `conversation_id`, `actor_id` and optional `message_id`/`target_user_id`; they omit text. Types are `message.created`, `conversation.updated` and `membership.removed`. Deduplicate by `event_id`, fetch authorized REST state, and periodically reconcile history even while connected. Pub/Sub is at-most-once; outbox retry can produce duplicates and events can arrive out of order. A notification is not a delivery/read receipt. On disconnect, reconnect and recover REST history. Close `1013` asks for retry/recovery; `1008` requires checking authentication/protocol, including expired tokens. Each user has at most five sockets per API process; slow consumers are disconnected when their bounded queue fills.
 

@@ -1,6 +1,6 @@
 # LandConnect mobile
 
-React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, community browsing, seller/broker property management, photos, map browsing and property location selection. FastAPI remains the source of permissions and property data.
+React Native/TypeScript Android application using Expo development builds and Expo Router. It implements secure accounts, listings/photos/maps/location selection, direct/group messaging with history recovery, and group administration. FastAPI remains the source of permissions and application data.
 
 ## Run on your Android phone
 
@@ -70,4 +70,15 @@ uv run --project backend python scripts/check_mobile_listings.py
 
 ## Current verification
 
-The foundation development APK was installed and reached sign-in. The current map stage rebuilt the ARM64 development APK with native maps/location, but did not install or operate it on the phone. Phone UI checks remain skipped at the user's request. The suite has 67 passing tests. The isolated FastAPI-to-TypeScript probe covers browsing, owner property/photo lifecycle, GeoJSON filters/bounds/date-line behavior and coordinate persistence. TypeScript/lint/format, Android bundle export, native assembleDebug and all 20 Expo Doctor checks pass. Real phone map rendering/GPS and live Docker/LAN checks remain outstanding. No developer database/upload volumes were reset. Writes are not automatically retried: refresh before repeating an uncertain creation/upload. Concurrent form edits follow last-write-wins behavior. Four moderate npm audit findings remain in the Expo dependency chain; no forced downgrade was applied.
+The foundation development APK was installed and reached sign-in. The current chat stage rebuilt the ARM64 development APK, but did not install or operate it on the phone. Phone UI checks remain skipped at the user's request. The suite has 88 passing tests; the backend chat test file has 29 passing tests. TypeScript/lint/format, Android bundle export, native assembleDebug and all 20 Expo Doctor checks pass. Real phone messaging/maps/GPS and live Docker/LAN Redis delivery checks remain outstanding. No developer database/upload volumes were reset. Concurrent property edits follow last-write-wins behavior. Four moderate npm audit findings remain in the Expo dependency chain; no forced downgrade was applied.
+
+Read [mobile step 5](../docs/17-mobile-chat.md) for chat screens, group permissions, WebSocket authentication, missed-hint recovery and retry semantics. Open chats from the community or Message owner from a property. Group people are selected from existing conversation memberships. Drafts and pending retries are memory-only. Retry same message preserves its UUID/body; group creation, listing creation and uploads have no automatic retry. Refresh before repeating an uncertain creation. No background push, unread counts or delivery/read receipts are implemented.
+
+The chat contract probe exercises real REST/socket handlers with synthetic data and an injected authorized outbox event, without a Redis connection or relay. Run from the repository root:
+
+```powershell
+uv run --project backend python scripts/check_mobile_chat.py
+uv run --project backend python -m pytest backend/tests/unit/test_chat.py -q
+```
+
+The backend now accepts its exact HTTP(S) API origin in the socket handler, which React Native Android sends by default. Other origins still need the configured allowlist, and every socket still requires JWT authentication. Rebuild/restart the API through the existing LAN helper before real chat testing.

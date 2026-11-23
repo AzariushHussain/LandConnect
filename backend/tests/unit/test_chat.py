@@ -459,6 +459,24 @@ def test_websocket_origin_is_checked(people):
             pass
 
 
+@pytest.mark.parametrize(
+    "url,origin",
+    [
+        ("ws://testserver/ws/chat", "http://testserver"),
+        ("wss://testserver/ws/chat", "https://testserver"),
+    ],
+)
+def test_native_socket_accepts_exact_api_origin_but_still_authenticates(people, url, origin):
+    with people.client.websocket_connect(url, headers={"Origin": origin}) as socket:
+        socket.send_json({"type": "auth", "token": people.tokens["a"]})
+        assert socket.receive_json() == {"type": "ready", "user_id": people.ids["a"]}
+    with people.client.websocket_connect(url, headers={"Origin": origin}) as socket:
+        socket.send_json({"type": "auth", "token": "invalid"})
+        with pytest.raises(WebSocketDisconnect) as error:
+            socket.receive_json()
+        assert error.value.code == 1008
+
+
 def test_connected_socket_expires(people):
     issued = datetime.now(UTC)
     token = jwt.encode(
