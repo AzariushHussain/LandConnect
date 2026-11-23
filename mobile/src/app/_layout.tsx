@@ -4,13 +4,14 @@ import { registerGlobals, setLogLevel } from '@livekit/react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, DefaultTheme, Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { calls, meetingSession, realtime, session } from '../application/services';
+import { calls, groupCalls, meetingSession, realtime, session } from '../application/services';
 import { useSession } from '../application/use-session';
 import { Action, Brand, Notice, Screen } from '../ui/components';
 import { colors } from '../ui/theme';
 import { canManage } from '../features/management/form';
 import { CallBanner } from '../features/calls/CallBanner';
 import { MeetingBanner } from '../features/meetings/MeetingBanner';
+import { GroupCallBanner } from '../features/calls/GroupCallBanner';
 
 registerGlobals();
 setLogLevel('silent');
@@ -33,6 +34,10 @@ export default function RootLayout() {
   useEffect(() => {
     void session.restore();
   }, []);
+  useEffect(() => {
+    groupCalls.reset();
+    return groupCalls.reset;
+  }, [realtimeToken]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', (next) => {
       if (next === 'active') session.checkExpiry();
@@ -145,6 +150,7 @@ export default function RootLayout() {
               <Stack.Protected guard={state.status === 'signedIn'}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="calls" options={{ headerShown: false }} />
+                <Stack.Screen name="group-calls/[id]" options={{ headerShown: false }} />
                 <Stack.Screen name="meetings/index" options={{ title: 'Meetings' }} />
                 <Stack.Screen name="meetings/new" options={{ title: 'Host a meeting' }} />
                 <Stack.Screen name="meetings/[id]" options={{ title: 'Meeting controls' }} />
@@ -166,6 +172,7 @@ export default function RootLayout() {
               </Stack.Protected>
             </Stack>
             {state.status === 'signedIn' && <CallBanner />}
+            {state.status === 'signedIn' && <GroupCallBanner />}
             {state.status === 'signedIn' && <MeetingBanner />}
           </View>
         </ThemeProvider>

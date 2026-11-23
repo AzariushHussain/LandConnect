@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response
 
 from app.api.deps import CurrentUser, DatabaseSession
-from app.models import Conversation, Message
+from app.models import Conversation, Meeting, Message
 from app.schemas.chat import (
     ConversationPage,
     ConversationResponse,
@@ -19,9 +19,24 @@ from app.schemas.chat import (
     MessageResponse,
     PageFilters,
 )
-from app.services import chat
+from app.schemas.meeting import GroupCallCreate, MeetingResponse
+from app.services import chat, group_calls
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
+
+
+@router.post("/{conversation_id}/calls", response_model=MeetingResponse, status_code=201)
+def group_call(
+    conversation_id: uuid.UUID,
+    data: GroupCallCreate,
+    user: CurrentUser,
+    db: DatabaseSession,
+    response: Response,
+) -> Meeting:
+    call, created = group_calls.start(db, conversation_id, user.id, data)
+    response.status_code = 201 if created else 200
+    response.headers["Cache-Control"] = "no-store"
+    return call
 
 
 @router.post("/direct", response_model=ConversationResponse, status_code=201)

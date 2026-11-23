@@ -18,6 +18,7 @@ type State = {
   error: string;
   notice: string;
   invitation: string | null;
+  incomingGroupCall: Meeting | null;
 };
 const initial = (): State => ({
   id: null,
@@ -31,6 +32,7 @@ const initial = (): State => ({
   error: '',
   notice: '',
   invitation: null,
+  incomingGroupCall: null,
 });
 export class MeetingSession {
   private state = initial();
@@ -69,11 +71,16 @@ export class MeetingSession {
     } else {
       const joined = this.state.joined || this.state.joining;
       this.update({ joined: false, joining: false, verified: false });
-      if (joined && !this.state.busy) void this.change('leave');
+      if (joined && !this.state.busy)
+        void this.change(
+          this.state.meeting?.conversation_id && this.state.meeting.owner.id === this.actor()
+            ? 'end'
+            : 'leave',
+        );
     }
   };
-  select = async (id: string) => {
-    if (this.state.id !== id) {
+  select = async (id: string, reverify = false) => {
+    if (this.state.id !== id || reverify) {
       if (this.state.joined || this.state.joining || this.state.busy) return;
       this.revision++;
       this.reading = false;
@@ -106,7 +113,10 @@ export class MeetingSession {
     try {
       const rows = await this.api.list(0, 'open', 'invited');
       if (generation === this.discovery && this.state.foreground)
-        this.update({ invitation: rows[0]?.id ?? null });
+        this.update({
+          invitation: rows.find((m) => !m.conversation_id)?.id ?? null,
+          incomingGroupCall: rows.find((m) => !!m.conversation_id) ?? null,
+        });
     } catch {
       /* Keep the last invitation hint; the inbox exposes refresh failures. */
     }

@@ -1,13 +1,16 @@
 import uuid
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import Conflict, Forbidden, InvalidRequest, NotFound, Unavailable
-from app.models import ChatOutbox, Meeting, MeetingMember, User
+from app.models import ChatOutbox, ConversationMember, Meeting, MeetingMember, User
 from app.models.common import now
 from app.models.enums import MeetingMemberStatus as Status
 from app.schemas.meeting import MeetingCreate, MeetingEvent, MeetingFilters
+from app.services.calls import aware
 from app.services.livekit import LiveKitRooms, MediaUnavailable, meeting_room_name
 from app.services.privacy import any_blocked, lock_users
 
@@ -57,6 +60,11 @@ def locked(
     member = member_of(meeting, actor)
     if member is None or member.status not in states:
         raise NotFound("Meeting not found")
+    if (
+        meeting.conversation_id
+        and db.get(ConversationMember, (meeting.conversation_id, actor)) is None
+    ):
+        raise NotFound("Group call not found")
     return meeting
 
 
@@ -75,7 +83,7 @@ def check_invitation(db: Session, ids: set[uuid.UUID], invited: set[uuid.UUID]) 
         raise Forbidden("Meeting invitation not permitted")
 
 
-def create(db: Session, actor: uuid.UUID, data: MeetingCreate):
+def create(db: Session, actor: uuid.UUID, data: MeetingCreate, *, conversation_id=None):
     if actor in data.member_ids:
         raise InvalidRequest("The owner is already a member")
     invited = set(data.member_ids)
@@ -85,10 +93,16 @@ def create(db: Session, actor: uuid.UUID, data: MeetingCreate):
         select(Meeting).where(Meeting.owner_id == actor, Meeting.client_id == data.client_id)
     )
     if existing:
-        if (existing.title, existing.kind, existing.initial_member_ids) != (
+        if (
+            existing.title,
+            existing.kind,
+            existing.initial_member_ids,
+            existing.conversation_id,
+        ) != (
             data.title,
             data.kind,
             initial,
+            conversation_id,
         ):
             raise Conflict("This client_id already belongs to a different meeting")
         return existing, False
@@ -99,6 +113,7 @@ def create(db: Session, actor: uuid.UUID, data: MeetingCreate):
         client_id=data.client_id,
         owner_id=actor,
         initial_member_ids=initial,
+        conversation_id=conversation_id,
     )
     meeting.members = [
         MeetingMember(
@@ -147,6 +162,8 @@ def invite(db: Session, meeting_id: uuid.UUID, actor: uuid.UUID, target: uuid.UU
     meeting = locked(db, meeting_id, actor, target)
     require_open(meeting)
     require_owner(meeting, actor)
+    if meeting.conversation_id:
+        raise Forbidden("Group calls use the conversation member list")
     member = member_of(meeting, target)
     if member and member.status in CURRENT:
         return meeting
@@ -166,6 +183,7 @@ def invite(db: Session, meeting_id: uuid.UUID, actor: uuid.UUID, target: uuid.UU
 
 def accept(db: Session, meeting_id: uuid.UUID, actor: uuid.UUID) -> Meeting:
     meeting = locked(db, meeting_id, actor)
+    expire_group_call(db, meeting)
     require_open(meeting)
     member = member_of(meeting, actor)
     if member.status == Status.accepted:
@@ -268,6 +286,7 @@ def end(db: Session, meeting_id: uuid.UUID, actor: uuid.UUID, rooms: LiveKitRoom
 
 def token(db: Session, meeting_id: uuid.UUID, actor: uuid.UUID, rooms: LiveKitRooms):
     meeting = locked(db, meeting_id, actor)
+    expire_group_call(db, meeting)
     require_open(meeting)
     member = member_of(meeting, actor)
     if member.status != Status.accepted:
@@ -344,4 +363,46 @@ def may_notify(db: Session, actor: uuid.UUID, event: MeetingEvent) -> bool:
     if member is None or member.status not in CURRENT:
         return False
     meeting = db.get(Meeting, event.meeting_id)
-    return meeting is not None and (event.type == "meeting.ended" or meeting.ended_at is None)
+    return (
+        meeting is not None
+        and (
+            not meeting.conversation_id
+            or db.get(ConversationMember, (meeting.conversation_id, actor)) is not None
+        )
+        and (event.type == "meeting.ended" or meeting.ended_at is None)
+    )
+
+
+def unanswered_group_call(meeting: Meeting) -> bool:
+    return bool(
+        meeting.conversation_id
+        and meeting.ended_at is None
+        and aware(meeting.created_at) + timedelta(seconds=get_settings().call_ring_seconds) <= now()
+        and not any(
+            m.status == Status.accepted and m.user_id != meeting.owner_id for m in meeting.members
+        )
+    )
+
+
+def expire_group_call(db: Session, meeting: Meeting, *, commit=True) -> None:
+    if unanswered_group_call(meeting):
+        finish(db, meeting)
+        if commit:
+            db.commit()
+
+
+def revoke_group_member(
+    db: Session, conversation_id: uuid.UUID, user_id: uuid.UUID, actor: uuid.UUID
+) -> None:
+    sessions = db.scalars(
+        select(Meeting)
+        .where(Meeting.conversation_id == conversation_id, Meeting.ended_at.is_(None))
+        .with_for_update(of=Meeting)
+    ).all()
+    for meeting in sessions:
+        member = member_of(meeting, user_id)
+        if member and member.status in CURRENT:
+            if meeting.owner_id == user_id:
+                finish(db, meeting, actor)
+            else:
+                revoke(db, meeting, member, Status.removed, actor)

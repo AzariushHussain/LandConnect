@@ -10,14 +10,48 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import get_settings
 from app.core.errors import NotFound
 from app.models import Meeting, Role, User
-from app.schemas.meeting import MeetingCreate
-from app.services import meetings
+from app.schemas.chat import GroupCreate
+from app.schemas.meeting import GroupCallCreate, MeetingCreate
+from app.services import chat, group_calls, meetings
 from app.services.privacy import lock_users
 from tests.fakes import FakeRooms
 from tests.integration.test_realtime import receive_event
 from tests.integration.test_realtime import servers as servers
 
 pytestmark = pytest.mark.postgres
+
+
+def test_simultaneous_group_dials_reuse_one_call(migrated_database):
+    engine, _ = migrated_database
+    factory = sessionmaker(engine, expire_on_commit=False)
+    with factory() as db:
+        users = [
+            User(
+                email=f"group{i}@example.com",
+                display_name=f"Member {i}",
+                role=Role.buyer,
+                password_hash="unused",
+            )
+            for i in range(3)
+        ]
+        db.add_all(users)
+        db.commit()
+        owner, member, third = [u.id for u in users]
+        group = chat.create_group(
+            db, owner, GroupCreate(name="Concurrent group", member_ids=[member, third])
+        )
+        gid = group.id
+
+    def dial(actor):
+        with factory() as db:
+            call, _ = group_calls.start(
+                db, gid, actor, GroupCallCreate(client_id=uuid.uuid4(), kind="audio")
+            )
+            return call.id
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a, b = pool.submit(dial, owner), pool.submit(dial, member)
+        assert a.result(timeout=10) == b.result(timeout=10)
 
 
 @pytest.mark.realtime

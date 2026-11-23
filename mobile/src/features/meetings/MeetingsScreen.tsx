@@ -43,6 +43,7 @@ export function MeetingsScreen() {
           <View style={styles.card}>
             <Text style={styles.title}>{item.title}</Text>
             <Notice>
+              {item.conversation_id ? 'Group call · ' : ''}
               {item.kind} -{' '}
               {item.ended_at ? 'Ended' : memberStatus(item, session.access()?.user.id ?? '')} -
               Host: {item.owner.display_name}
@@ -51,7 +52,10 @@ export function MeetingsScreen() {
               label={`Open ${item.title}`}
               secondary
               onPress={() =>
-                router.navigate({ pathname: '/meetings/[id]', params: { id: item.id } })
+                router.navigate({
+                  pathname: item.conversation_id ? '/group-calls/[id]' : '/meetings/[id]',
+                  params: { id: item.id },
+                })
               }
             />
           </View>

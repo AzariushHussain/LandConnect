@@ -25,6 +25,7 @@ import { BlockButton } from '../privacy/BlockButton';
 import { CallButtons } from '../calls/CallButtons';
 import { ChatAvatar } from './ChatAvatar';
 import { IconButton } from '../../ui/IconButton';
+import { GroupCallButtons } from '../calls/GroupCallButtons';
 
 export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
   const [thread] = useState(() => new Thread(id, actor, chatApi, randomUUID));
@@ -100,6 +101,9 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
                 .map((member) => (
                   <CallButtons key={member.user.id} peerId={member.user.id} compact />
                 ))}
+            {state.chat?.kind === 'group' && !state.unavailable && (
+              <GroupCallButtons conversationId={id} />
+            )}
             <IconButton
               icon="ellipsis-vertical"
               label="Conversation options"
@@ -128,17 +132,6 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
                   secondary
                   busy={state.syncing}
                   onPress={() => void thread.sync()}
-                />
-              )}
-              {state.chat?.kind === 'group' && (
-                <Action
-                  label="Host a meeting with this group"
-                  secondary
-                  disabled={state.unavailable}
-                  onPress={() => {
-                    setOptions(false);
-                    router.push({ pathname: '/meetings/new', params: { group: id } });
-                  }}
                 />
               )}
               {state.chat?.kind === 'group' && (
@@ -181,7 +174,11 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
               </View>
             )}
             ListEmptyComponent={
-              !state.unavailable ? <Notice>No messages yet. Say hello.</Notice> : undefined
+              !state.unavailable ? (
+                <View>
+                  <Notice>No messages yet. Say hello.</Notice>
+                </View>
+              ) : undefined
             }
             ListFooterComponent={
               state.before !== null ? (

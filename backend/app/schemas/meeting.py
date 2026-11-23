@@ -22,6 +22,12 @@ class MeetingCreate(BaseModel):
         return self
 
 
+class GroupCallCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    client_id: uuid.UUID
+    kind: CallKind
+
+
 class MeetingMemberResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     user: PublicUser
@@ -33,6 +39,7 @@ class MeetingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     client_id: uuid.UUID | None
+    conversation_id: uuid.UUID | None
     owner: PublicUser
     title: str
     kind: CallKind

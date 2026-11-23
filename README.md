@@ -1,8 +1,12 @@
 # LandConnect
 
-A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, one-to-one calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, group administration, privacy/block controls, foreground one-to-one calling and invite-only group meeting screens using LiveKit.
+A land marketplace mobile application, built in stages. The backend includes **authentication, listings/images/maps, direct/group chat, privacy controls, direct/group calls and invite-only meeting APIs with a self-hosted SFU**, on FastAPI, PostgreSQL, Alembic, Redis and Docker. The **React Native Android app** includes secure accounts, listings/photos/maps/location selection, direct/group messaging with Pub/Sub notifications and history recovery, group administration, privacy/block controls, foreground direct/group calling and separate invite-only meeting screens using LiveKit.
 
 ## Android application
+
+Direct video calls now use a full-screen remote feed, floating self-preview and bottom controls. Group video calls use named, paged grids with camera-off states and speaker highlights. See the [video UI walkthrough](docs/26-mobile-video-call-design.md) and [step 13 PDF](docs/LandConnect%20Mobile%20Step%2013%20Guide.pdf). **176 mobile tests**, typecheck/lint/format and Android bundle export pass; native phone rendering/media checks remain deferred.
+
+Group chats now have Audio/Video call icons with direct dial/answer and automatic media connection. See the [group calling walkthrough](docs/25-mobile-group-calling.md) and [step 12 PDF](docs/LandConnect%20Mobile%20Step%2012%20Guide.pdf). Current validation passes **174 mobile tests**, **76 selected backend unit tests** and **7 isolated PostgreSQL checks**. The local API runs migration **0005_group_calls**; phone media/UI checks remain deferred.
 
 Start a new private chat directly from the Chats search field using a profile name or full email address. Selecting a person creates or opens the existing direct conversation. The video shortcut was removed; meetings remain under My Account. See the [new-chat search walkthrough](docs/24-mobile-new-chat-search.md) and [step 11 PDF](docs/LandConnect%20Mobile%20Step%2011%20Guide.pdf). Current checks pass **162 mobile tests** and **71 selected backend tests**; physical phone UI checks remain deferred.
 
@@ -24,7 +28,7 @@ The earlier [mobile calling walkthrough](docs/19-mobile-calling.md) and [step 7 
 
 The calling-stage ARM64 development APK builds successfully; packaged-APK inspection confirms camera/microphone permissions. It requires Metro and has not been installed/tested on the phone in this stage.
 
-The [mobile meeting walkthrough](docs/20-mobile-meetings.md) and [step 8 PDF](docs/LandConnect%20Mobile%20Step%208%20Guide.pdf) explain hosting, consent, shared native media, member removal, versioned rooms and cleanup. Open My account > Meetings, or host from a group chat. Meeting invitations are managed separately from chat membership. That stage passed **147 mobile tests** and **66 selected backend tests**. Meeting probes use fake room operations and an injected authorized socket event; real device/SFU/Redis delivery remains unverified. Run `uv run --project backend python scripts/check_mobile_meetings.py` for the isolated probe.
+The [mobile meeting walkthrough](docs/20-mobile-meetings.md) and [step 8 PDF](docs/LandConnect%20Mobile%20Step%208%20Guide.pdf) explain hosting, consent, shared native media, member removal, versioned rooms and cleanup. Open My account > Meetings for formal meetings; group conversation icons start group calls. Meeting invitations are managed separately from chat membership. That stage passed **147 mobile tests** and **66 selected backend tests**. Meeting probes use fake room operations and an injected authorized socket event; real device/SFU/Redis delivery remains unverified. Run `uv run --project backend python scripts/check_mobile_meetings.py` for the isolated probe.
 
 ## Calling architecture
 

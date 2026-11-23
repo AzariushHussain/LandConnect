@@ -62,6 +62,21 @@ export function CallScreen() {
   const ringing = call?.status === 'ringing';
   const accepted = call?.status === 'accepted';
   const kind = call?.kind ?? state.attempt?.kind ?? 'audio';
+  if (accepted && kind === 'video' && focused && state.joined && state.verified && state.foreground)
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0B141A' }}>
+        <NativeCall
+          key={call.id}
+          call={call}
+          videoOptions={{
+            title: peer?.display_name ?? 'Video call',
+            onBack: back,
+            onEnd: () => void finish(),
+            endBusy: state.busy,
+          }}
+        />
+      </View>
+    );
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />

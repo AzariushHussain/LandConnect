@@ -23,7 +23,7 @@ from app.schemas.chat import (
     PrivacyUpdate,
 )
 from app.services.calls import terminate_for_privacy
-from app.services.meetings import revoke_for_privacy
+from app.services.meetings import revoke_for_privacy, revoke_group_member
 from app.services.privacy import any_blocked, lock_users
 
 MAX_GROUP_MEMBERS = 50
@@ -240,6 +240,7 @@ def remove_member(
         if member.role == MemberRole.admin and actor != conversation.owner_id:
             raise Forbidden("Only the owner can remove an admin")
     conversation.members.remove(member)
+    revoke_group_member(db, conversation_id, user_id, actor)
     emit(db, conversation, actor, event_type="membership.removed", removed=user_id)
     db.commit()
 

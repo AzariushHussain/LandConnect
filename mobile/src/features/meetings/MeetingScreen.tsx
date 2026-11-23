@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking } from 'react-native';
-import { router, useFocusEffect, useIsFocused, usePreventRemove } from 'expo-router';
+import { Redirect, router, useFocusEffect, useIsFocused, usePreventRemove } from 'expo-router';
 import { meetingSession, meetingsApi } from '../../application/services';
 import { Action, Heading, Notice, Screen } from '../../ui/components';
 import { RealtimeNotice } from '../chat/use-chat-updates';
@@ -36,7 +36,12 @@ export function MeetingScreen({ id, actor }: { id: string; actor: string }) {
       void meetingSession.select(id);
     }, [id]),
   );
-  useEffect(() => () => meetingSession.detach(id), [id]);
+  useEffect(
+    () => () => {
+      if (!meetingSession.getSnapshot().meeting?.conversation_id) meetingSession.detach(id);
+    },
+    [id],
+  );
   useEffect(() => {
     if (leave) leave();
   }, [leave]);
@@ -89,6 +94,8 @@ export function MeetingScreen({ id, actor }: { id: string; actor: string }) {
       </Screen>
     );
   const meeting = state.meeting;
+  if (meeting?.conversation_id)
+    return <Redirect href={{ pathname: '/group-calls/[id]', params: { id: meeting.id } }} />;
   const owner = meeting?.owner.id === actor;
   const status = meeting ? memberStatus(meeting, actor) : undefined;
   const busy = state.busy || state.joining;

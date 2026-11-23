@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +28,7 @@ class Meeting(Base):
     __tablename__ = "meetings"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("conversations.id"))
     client_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     title: Mapped[str] = mapped_column(String(150))
     kind: Mapped[CallKind] = mapped_column(enum_type(CallKind), default=CallKind.video)
@@ -47,4 +49,11 @@ class Meeting(Base):
         CheckConstraint("room_version >= 1", name="positive_room_version"),
         Index("ix_meetings_state_checked", "ended_at", "media_checked_at"),
         Index("ix_meetings_cleanup", "retiring_room_name"),
+        Index(
+            "uq_group_call_open",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text("conversation_id IS NOT NULL AND ended_at IS NULL"),
+            sqlite_where=text("conversation_id IS NOT NULL AND ended_at IS NULL"),
+        ),
     )

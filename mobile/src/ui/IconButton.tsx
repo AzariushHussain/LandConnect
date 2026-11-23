@@ -36,7 +36,7 @@ export function IconButton({
         success: '#159C65',
       }[tone];
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { width: size }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}

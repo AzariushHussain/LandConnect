@@ -14,6 +14,7 @@ const id = listingId(600),
 const meeting = (version = 1): Meeting => ({
   id,
   client_id: clientId,
+  conversation_id: null,
   owner: person(actor),
   title: 'Land discussion',
   kind: 'video',
@@ -48,6 +49,25 @@ function apiFixture(fetcher: typeof fetch) {
     },
   };
 }
+
+test('group-call API validates the linked group and sends only attempt identity and kind', async () => {
+  const group = listingId(660);
+  const f = apiFixture(async (input, options) => {
+    assert.equal(new URL(String(input)).pathname, `/conversations/${group}/calls`);
+    assert.deepEqual(JSON.parse(String(options?.body)), { client_id: clientId, kind: 'video' });
+    return new Response(JSON.stringify({ ...meeting(), conversation_id: group }));
+  });
+  assert.equal(
+    (await f.api.groupCall({ client_id: clientId, conversation_id: group, kind: 'video' }))
+      .conversation_id,
+    group,
+  );
+  const wrong = apiFixture(async () => new Response(JSON.stringify(meeting())));
+  await assert.rejects(
+    wrong.api.groupCall({ client_id: clientId, conversation_id: group, kind: 'video' }),
+    /verify the group call/,
+  );
+});
 function fixture(who = actor) {
   let server = meeting();
   const actions: string[] = [];

@@ -2,10 +2,17 @@ import { useCallback } from 'react';
 import { calls, callsApi } from '../../application/services';
 import { NativeMedia } from '../media/NativeMedia';
 import { Call } from './api';
-import { DirectCallMedia } from './DirectCallMedia';
+import { CallMedia } from './CallMedia';
 import { ActivityIndicator } from 'react-native';
+import { VideoCallConnecting, VideoCallOptions } from './VideoCallFrame';
 
-export function NativeCall({ call }: { call: Call }) {
+export function NativeCall({
+  call,
+  videoOptions,
+}: {
+  call: Call;
+  videoOptions?: VideoCallOptions;
+}) {
   const token = useCallback(() => callsApi.token(call.id), [call.id]);
   return (
     <NativeMedia
@@ -14,14 +21,24 @@ export function NativeCall({ call }: { call: Call }) {
       loadToken={token}
       failed={calls.mediaFailed}
       connecting={
-        <ActivityIndicator accessibilityLabel="Connecting call" color="#D9E8E0" size="large" />
+        videoOptions ? (
+          <VideoCallConnecting options={videoOptions} />
+        ) : (
+          <ActivityIndicator accessibilityLabel="Connecting call" color="#D9E8E0" size="large" />
+        )
       }
       names={{
         [call.caller.id]: call.caller.display_name,
         [call.callee.id]: call.callee.display_name,
       }}
     >
-      <DirectCallMedia video={call.kind === 'video'} />
+      <CallMedia
+        names={{
+          [call.caller.id]: call.caller.display_name,
+          [call.callee.id]: call.callee.display_name,
+        }}
+        videoOptions={videoOptions}
+      />
     </NativeMedia>
   );
 }

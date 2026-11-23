@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from types import SimpleNamespace
 
 import jwt
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.main import app
 from app.models import ChatOutbox, Meeting, MeetingMember, MeetingMemberStatus, Role, User
+from app.models.common import now
 from app.schemas.meeting import MeetingCreate
 from app.services import meetings
 from app.services.meeting_worker import maintain_meetings
@@ -66,6 +68,105 @@ def invite(p, meeting_id, actor="a", target="d"):
 def remove(p, meeting_id, target="b", actor="a"):
     return p.client.delete(
         f"/meetings/{meeting_id}/members/{p.ids[target]}", headers=p.headers[actor]
+    )
+
+
+def chat_group(p):
+    response = p.client.post(
+        "/conversations/groups",
+        headers=p.headers["a"],
+        json={"name": "Site team", "member_ids": [p.ids["b"], p.ids["c"]]},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def dial_group(p, gid, actor="a", kind="video", client_id=None):
+    return p.client.post(
+        f"/conversations/{gid}/calls",
+        headers=p.headers[actor],
+        json={"kind": kind, "client_id": client_id or str(uuid.uuid4())},
+    )
+
+
+def test_group_call_derives_members_and_reuses_one_active_call(people):
+    p = people
+    gid, attempt = chat_group(p), str(uuid.uuid4())
+    response = dial_group(p, gid, client_id=attempt)
+    assert response.status_code == 201, response.text
+    call = response.json()
+    assert call["conversation_id"] == gid and call["title"] == "Site team"
+    assert {m["user"]["id"] for m in call["members"]} == {p.ids[k] for k in ("a", "b", "c")}
+    assert next(m for m in call["members"] if m["user"]["id"] == p.ids["a"])["status"] == "accepted"
+    assert dial_group(p, gid, client_id=attempt).json()["id"] == call["id"]
+    joined = dial_group(p, gid, actor="b")
+    assert joined.status_code == 200 and joined.json()["id"] == call["id"]
+    assert dial_group(p, gid, kind="audio").status_code == 409
+    assert act(p, call["id"], "token", "b").status_code == 403
+    assert act(p, call["id"], "accept", "b").status_code == 200
+    assert act(p, call["id"], "token", "b").status_code == 200
+    assert dial_group(p, gid, actor="d").status_code == 404
+    assert invite(p, call["id"]).status_code == 403
+    assert act(p, call["id"], "end").status_code == 200
+    fresh = dial_group(p, gid, kind="audio")
+    assert fresh.status_code == 201 and fresh.json()["id"] != call["id"]
+    assert dial_group(p, gid, client_id=attempt).json()["ended_at"] is not None
+
+
+def test_group_call_checks_privacy_and_rejects_direct_conversation(people):
+    p = people
+    gid = chat_group(p)
+    with Session(p.engine) as db:
+        db.get(User, uuid.UUID(p.ids["b"])).allow_calls = False
+        db.commit()
+    assert dial_group(p, gid).status_code == 403
+    direct = p.client.post(
+        "/conversations/direct", headers=p.headers["a"], json={"recipient_id": p.ids["b"]}
+    ).json()["id"]
+    assert dial_group(p, direct).status_code == 409
+
+
+def test_group_removal_revokes_call_tokens_and_rotates_issued_room(people):
+    p = people
+    gid = chat_group(p)
+    mid = dial_group(p, gid).json()["id"]
+    assert act(p, mid, "accept", "b").status_code == 200
+    assert act(p, mid, "token", "b").status_code == 200
+    removed = p.client.delete(f"/conversations/{gid}/members/{p.ids['b']}", headers=p.headers["a"])
+    assert removed.status_code == 204
+    assert act(p, mid, "token", "b").status_code == 404
+    assert p.client.get(f"/meetings/{mid}", headers=p.headers["b"]).status_code == 404
+    detail = p.client.get(f"/meetings/{mid}", headers=p.headers["a"]).json()
+    assert detail["room_version"] == 2 and detail["media_cleanup_pending"]
+    maintain_meetings(lambda: Session(p.engine), p.rooms)
+    assert act(p, mid, "token").status_code == 200
+
+
+def test_group_call_initiator_removal_ends_the_call(people):
+    p = people
+    gid = chat_group(p)
+    mid = dial_group(p, gid, actor="b").json()["id"]
+    response = p.client.delete(f"/conversations/{gid}/members/{p.ids['b']}", headers=p.headers["a"])
+    assert response.status_code == 204
+    assert p.client.get(f"/meetings/{mid}", headers=p.headers["a"]).json()["ended_at"] is not None
+
+
+def test_unanswered_group_call_expires_before_accept_and_in_worker(people):
+    p = people
+    gid = chat_group(p)
+    mid = dial_group(p, gid).json()["id"]
+    with Session(p.engine) as db:
+        db.get(Meeting, uuid.UUID(mid)).created_at = now() - timedelta(seconds=121)
+        db.commit()
+    assert act(p, mid, "accept", "b").status_code == 409
+    assert p.client.get(f"/meetings/{mid}", headers=p.headers["a"]).json()["ended_at"] is not None
+    next_id = dial_group(p, gid).json()["id"]
+    with Session(p.engine) as db:
+        db.get(Meeting, uuid.UUID(next_id)).created_at = now() - timedelta(seconds=121)
+        db.commit()
+    maintain_meetings(lambda: Session(p.engine), p.rooms)
+    assert (
+        p.client.get(f"/meetings/{next_id}", headers=p.headers["a"]).json()["ended_at"] is not None
     )
 
 

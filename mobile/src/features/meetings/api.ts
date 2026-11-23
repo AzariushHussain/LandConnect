@@ -8,6 +8,7 @@ export type Member = { user: Person; status: 'invited' | 'accepted' | 'declined'
 export type Meeting = {
   id: string;
   client_id: string | null;
+  conversation_id: string | null;
   owner: Person;
   title: string;
   kind: CallKind;
@@ -34,6 +35,10 @@ export function meetingDto(value: unknown, actor: string): Meeting {
     typeof data.id !== 'string' ||
     !uuid(data.id) ||
     !(data.client_id === null || (typeof data.client_id === 'string' && uuid(data.client_id))) ||
+    !(
+      data.conversation_id == null ||
+      (typeof data.conversation_id === 'string' && uuid(data.conversation_id))
+    ) ||
     typeof data.title !== 'string' ||
     meetingTitle(data.title) !== data.title ||
     !['audio', 'video'].includes(String(data.kind)) ||
@@ -65,6 +70,7 @@ export function meetingDto(value: unknown, actor: string): Meeting {
   return {
     id: data.id,
     client_id: data.client_id,
+    conversation_id: (data.conversation_id as string | null | undefined) ?? null,
     owner,
     title: data.title,
     kind: data.kind as CallKind,
@@ -151,6 +157,19 @@ export class MeetingsApi {
   }
   detail(id: string) {
     return this.response(`/meetings/${this.id(id)}`, {}, id);
+  }
+  async groupCall(attempt: { client_id: string; conversation_id: string; kind: CallKind }) {
+    this.id(attempt.client_id);
+    this.id(attempt.conversation_id);
+    if (!['audio', 'video'].includes(attempt.kind))
+      throw new Error('Choose an audio or video call.');
+    const call = await this.response(`/conversations/${attempt.conversation_id}/calls`, {
+      method: 'POST',
+      body: { client_id: attempt.client_id, kind: attempt.kind },
+    });
+    if (call.conversation_id !== attempt.conversation_id || call.kind !== attempt.kind)
+      throw new Error('Could not verify the group call. Retry the same attempt.');
+    return call;
   }
   async create(attempt: MeetingAttempt) {
     this.id(attempt.client_id);

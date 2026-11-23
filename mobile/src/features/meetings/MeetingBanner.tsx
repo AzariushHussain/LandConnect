@@ -7,6 +7,7 @@ export function MeetingBanner() {
   const state = useMeeting(),
     path = usePathname();
   const id = state.joined ? state.id : state.invitation;
+  if (state.joined && state.meeting?.conversation_id) return null;
   if (!id || !state.foreground || path === `/meetings/${id}`) return null;
   return (
     <Pressable
