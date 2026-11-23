@@ -24,6 +24,8 @@ export class CallController {
   private listeners = new Set<() => void>();
   private revision = 0;
   private reading = false;
+  private connectCallId: string | null = null;
+  private queuedRefresh = false;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -36,12 +38,15 @@ export class CallController {
     private readonly actor: () => string | undefined,
     private readonly random: () => string,
     private readonly otherMediaBusy: () => boolean = () => false,
+    private readonly prepareMedia: (kind: CallKind) => Promise<void> = async () => {},
   ) {}
   private update(patch: Partial<State>) {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
   reset = () => {
+    this.queuedRefresh = false;
+    this.connectCallId = null;
     this.revision++;
     this.reading = false;
     this.update({
@@ -58,17 +63,28 @@ export class CallController {
     this.update({ foreground });
     if (foreground) void this.refresh();
     else {
+      this.queuedRefresh = false;
+      this.connectCallId = null;
       this.update({ joined: false, verified: false });
       if (active(this.state.call)) void this.finish();
     }
   };
   hint = (id?: string, terminal = false) => {
-    if (terminal && this.state.call?.id === id) this.update({ verified: false, joined: false });
+    this.queuedRefresh = true;
+    if (terminal && this.state.call?.id === id) {
+      this.connectCallId = null;
+      this.update({ verified: false, joined: false });
+    }
     void this.refresh();
   };
+  private flushRefresh() {
+    if (this.queuedRefresh && this.state.foreground && !this.state.busy && !this.reading)
+      void this.refresh();
+  }
   refresh = async () => {
     if (!this.state.foreground || this.state.busy || this.reading || !this.actor()) return;
     this.reading = true;
+    this.queuedRefresh = false;
     const revision = this.revision;
     try {
       let call = this.state.call;
@@ -83,11 +99,12 @@ export class CallController {
         else if (call?.media_cleanup_pending) call = await this.api.detail(call.id);
       }
       if (revision !== this.revision || !this.state.foreground) return;
-      const same = call?.id === this.state.call?.id;
+      if (!active(call)) this.connectCallId = null;
       this.update({
         call,
         verified: true,
-        joined: same && call?.status === 'accepted' && this.state.joined,
+        joined:
+          call?.status === 'accepted' && call.id === this.connectCallId && !this.otherMediaBusy(),
         attempt:
           call?.client_id && call.client_id === this.state.attempt?.client_id
             ? null
@@ -95,6 +112,7 @@ export class CallController {
         error: '',
       });
     } catch (error) {
+      if (revision === this.revision) this.connectCallId = null;
       if (revision === this.revision)
         this.update({
           ...(error instanceof ApiError && error.status === 404 ? { call: null } : {}),
@@ -103,26 +121,58 @@ export class CallController {
           error: 'Could not confirm call status. Media is stopped. Refresh to try again.',
         });
     } finally {
-      if (revision === this.revision) this.reading = false;
+      if (revision === this.revision) {
+        this.reading = false;
+        this.flushRefresh();
+      }
     }
   };
   start = async (callee: string, kind: CallKind) => {
     if (this.blockedByMeeting()) return;
     if (this.state.busy || active(this.state.call) || this.state.attempt || !this.state.foreground)
       return;
-    this.update({ attempt: { client_id: this.random(), callee_id: callee, kind }, joined: false });
+    this.connectCallId = null;
+    this.update({
+      call: null,
+      verified: false,
+      attempt: { client_id: this.random(), callee_id: callee, kind },
+      joined: false,
+    });
     await this.retry();
   };
   retry = async () => {
+    if (this.blockedByMeeting()) return;
     const attempt = this.state.attempt;
     if (!attempt || this.state.busy || !this.state.foreground) return;
     const revision = ++this.revision;
+    const actor = this.actor();
     this.reading = false;
     this.update({ busy: true, error: '' });
+    let prepared = false;
     try {
+      await this.prepareMedia(attempt.kind);
+      prepared = true;
+      if (revision !== this.revision) return;
+      if (!actor || this.actor() !== actor) {
+        this.reset();
+        return;
+      }
+      if (!this.state.foreground || this.blockedByMeeting()) {
+        this.update({
+          attempt: null,
+          error: 'Call cancelled before connecting. Try again when you are ready.',
+        });
+        return;
+      }
       const call = await this.api.create(attempt);
       if (revision !== this.revision) return;
-      this.update({ call, attempt: null, verified: true });
+      this.connectCallId = this.state.foreground && active(call) ? call.id : null;
+      this.update({
+        call,
+        attempt: null,
+        verified: true,
+        joined: call.status === 'accepted' && this.state.foreground,
+      });
       if (!this.state.foreground && active(call)) {
         this.update({ busy: false });
         await this.finish();
@@ -131,16 +181,21 @@ export class CallController {
       if (revision === this.revision)
         this.update({
           attempt:
-            error instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(error.status)
+            !prepared ||
+            (error instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(error.status))
               ? null
               : attempt,
-          error:
-            error instanceof ApiError
+          error: !prepared
+            ? 'Microphone/camera access is required. Check app permissions and call again.'
+            : error instanceof ApiError
               ? error.message
               : 'Could not confirm the call. Retry the same attempt; it may already exist.',
         });
     } finally {
-      if (revision === this.revision) this.update({ busy: false });
+      if (revision === this.revision) {
+        this.update({ busy: false });
+        this.flushRefresh();
+      }
     }
   };
   accept = async () => {
@@ -165,21 +220,26 @@ export class CallController {
       this.state.verified &&
       !this.state.busy &&
       this.state.call?.status === 'accepted'
-    )
+    ) {
+      this.connectCallId = this.state.call.id;
       this.update({ joined: true });
+    }
   };
-  mediaFailed = () =>
+  mediaFailed = () => {
+    this.connectCallId = null;
     this.update({
       joined: false,
       error:
-        'Media could not connect. Check camera/microphone permissions and the media server, then retry joining.',
+        'Could not connect the call. Check microphone/camera access and your connection, then reconnect.',
     });
+  };
   private blockedByMeeting() {
     if (!this.otherMediaBusy()) return false;
     this.update({ error: 'Leave meeting media before starting or accepting a one-to-one call.' });
     return true;
   }
   finish = async () => {
+    this.connectCallId = null;
     this.update({ joined: false });
     const call = this.state.call;
     if (!call || !active(call) || this.state.busy) return;
@@ -189,10 +249,25 @@ export class CallController {
   };
   private async change(action: 'accept' | 'reject' | 'cancel' | 'end') {
     const call = this.state.call!;
+    const actor = this.actor();
     const revision = ++this.revision;
     this.reading = false;
     this.update({ busy: true, verified: false, error: '' });
     try {
+      if (action === 'accept') {
+        await this.prepareMedia(call.kind);
+        if (revision !== this.revision) return;
+        if (!actor || this.actor() !== actor) {
+          this.reset();
+          return;
+        }
+        if (!this.state.foreground || this.blockedByMeeting()) {
+          this.update({
+            error: 'Answer cancelled before connecting. You can answer again or decline.',
+          });
+          return;
+        }
+      }
       let result: Call;
       try {
         result = await this.api.change(call.id, action);
@@ -203,12 +278,17 @@ export class CallController {
           result = await this.api.change(call.id, 'end');
       }
       if (revision !== this.revision) return;
-      this.update({ call: result, verified: true, joined: false });
+      this.connectCallId =
+        action === 'accept' && result.status === 'accepted' && this.state.foreground
+          ? result.id
+          : null;
+      this.update({ call: result, verified: true, joined: this.connectCallId === result.id });
       if (!this.state.foreground && active(result)) {
         this.update({ busy: false });
         await this.finish();
       }
     } catch {
+      if (revision === this.revision) this.connectCallId = null;
       if (revision === this.revision)
         this.update({
           verified: false,
@@ -217,7 +297,10 @@ export class CallController {
             'Could not confirm this action. Media is stopped. Refresh and retry the call action.',
         });
     } finally {
-      if (revision === this.revision) this.update({ busy: false });
+      if (revision === this.revision) {
+        this.update({ busy: false });
+        this.flushRefresh();
+      }
     }
   }
 }

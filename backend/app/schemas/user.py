@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.enums import Role
 
@@ -24,3 +25,13 @@ class UserResponse(BaseModel):
     allow_messages: bool
     allow_calls: bool
     created_at: datetime
+
+
+class UserSearchFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    q: Annotated[str, Field(min_length=2, max_length=254)]
+
+
+class UserSearchResponse(BaseModel):
+    items: list[PublicUser]
+    has_more: bool

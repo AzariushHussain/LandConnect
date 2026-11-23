@@ -6,10 +6,22 @@ from fastapi import APIRouter, Query, Response
 from app.api.deps import CurrentUser, DatabaseSession
 from app.models.user import User
 from app.schemas.chat import BlockPage, PageFilters, PrivacyUpdate
-from app.schemas.user import UserResponse
-from app.services import chat
+from app.schemas.user import UserResponse, UserSearchFilters, UserSearchResponse
+from app.services import chat, users
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@router.get("/search", response_model=UserSearchResponse)
+def search(
+    user: CurrentUser,
+    db: DatabaseSession,
+    filters: Annotated[UserSearchFilters, Query()],
+    response: Response,
+) -> UserSearchResponse:
+    response.headers["Cache-Control"] = "no-store"
+    people = users.search_recipients(db, user.id, filters.q)
+    return UserSearchResponse(items=people[:20], has_more=len(people) > 20)
 
 
 @router.get("/me", response_model=UserResponse)

@@ -43,6 +43,43 @@ function fixture(fetcher: typeof fetch) {
   };
 }
 
+test('people search encodes a trimmed email, authenticates and retains only public identity', async () => {
+  const f = fixture(async (input, options) => {
+    const url = new URL(String(input));
+    assert.equal(url.pathname, '/users/search');
+    assert.equal(url.searchParams.get('q'), 'seller+land@example.com');
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer token');
+    return json({ items: [{ ...person(other), email: 'private@example.com' }], has_more: false });
+  });
+  const result = await f.api.searchPeople('  seller+land@example.com  ');
+  assert.deepEqual(result, { items: [person(other)], hasMore: false });
+});
+
+test('people search rejects short input, invalid pages and another sessions late results', async () => {
+  let requests = 0;
+  const f = fixture(async () => {
+    requests++;
+    return json({ items: [person(actor)], has_more: false });
+  });
+  await assert.rejects(f.api.searchPeople('a'));
+  await assert.rejects(f.api.searchPeople('x'.repeat(255)));
+  assert.equal(requests, 0);
+  await assert.rejects(f.api.searchPeople('Name'), /Invalid people search/);
+  for (const response of [
+    { items: [person(other), person(other)], has_more: false },
+    { items: [person(other)], has_more: true },
+    { items: [{ id: 'bad' }], has_more: false },
+  ]) {
+    await assert.rejects(fixture(async () => json(response)).api.searchPeople('Name'));
+  }
+  const pending = deferred<Response>();
+  const switched = fixture(async () => pending.promise);
+  const request = switched.api.searchPeople('Name');
+  switched.set(null);
+  pending.resolve(json({ items: [person(other)], has_more: false }));
+  await assert.rejects(request, (e) => e instanceof ApiError && e.status === 401);
+});
+
 test('chat parsing strips contact fields and requires the current membership and valid group owner', () => {
   assert.equal('email' in parsePerson({ ...person(), email: 'private@example.com' }), false);
   assert.equal(parseConversation(conversation(), actor).members.length, 2);

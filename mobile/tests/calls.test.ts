@@ -21,7 +21,7 @@ const call = (status: Call['status'] = 'ringing'): Call => ({
   media_cleanup_pending: false,
 });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
-function controller(who = actor) {
+function controller(who = actor, prepareMedia: () => Promise<void> = async () => {}) {
   let server: Call | null = null;
   const changes: string[] = [];
   const api = {
@@ -45,6 +45,8 @@ function controller(who = actor) {
     api,
     () => who,
     () => clientId,
+    () => false,
+    prepareMedia,
   );
   state.foreground(true);
   return {
@@ -165,7 +167,7 @@ test('outgoing retries keep one identifier and coalesce repeated taps', async ()
   assert.equal(creates, 2);
   assert.equal(f.state.getSnapshot().attempt, null);
 });
-test('incoming discovery uses REST and acceptance does not automatically open media', async () => {
+test('answering a call automatically enables media after server acceptance', async () => {
   const f = controller(other);
   await flush();
   f.set(call());
@@ -173,8 +175,6 @@ test('incoming discovery uses REST and acceptance does not automatically open me
   assert.equal(f.state.getSnapshot().call?.id, callId);
   await f.state.accept();
   assert.deepEqual(f.changes, ['accept']);
-  assert.equal(f.state.getSnapshot().joined, false);
-  await f.state.join();
   assert.equal(f.state.getSnapshot().joined, true);
 });
 test('a stale poll cannot overwrite a successful outgoing action', async () => {
@@ -244,6 +244,7 @@ test('background during an accept request finishes the newly accepted call', asy
   const change = f.api.change;
   f.api.change = async (id, action) => (action === 'accept' ? pending.promise : change(id, action));
   const accept = f.state.accept();
+  await flush();
   f.state.foreground(false);
   pending.resolve(call('accepted'));
   await accept;
@@ -335,6 +336,137 @@ test('closing during native publication stops tracks again after the late operat
   publish.resolve();
   await close;
   assert.equal(tracks, 0);
+});
+test('dialling connects the caller automatically when the callee answers', async () => {
+  const f = controller();
+  await flush();
+  await f.state.start(other, 'video');
+  assert.equal(f.state.getSnapshot().joined, false);
+  f.set(call('accepted'));
+  await f.state.refresh();
+  assert.equal(f.state.getSnapshot().joined, true);
+});
+test('an acceptance hint during a stale poll queues an immediate fresh read', async () => {
+  const f = controller();
+  await flush();
+  await f.state.start(other, 'video');
+  const pending = deferred<Call>();
+  let reads = 0;
+  f.api.detail = async () => (++reads === 1 ? pending.promise : call('accepted'));
+  const poll = f.state.refresh();
+  f.state.hint(callId);
+  pending.resolve(call());
+  await poll;
+  await flush();
+  assert.equal(reads, 2);
+  assert.equal(f.state.getSnapshot().joined, true);
+});
+test('discovering an accepted call never captures media without local dial or answer intent', async () => {
+  const f = controller();
+  await flush();
+  f.set(call('accepted'));
+  await f.state.refresh();
+  assert.equal(f.state.getSnapshot().joined, false);
+});
+test('permission denial stops an outgoing call before any create request', async () => {
+  const f = controller(actor, async () => {
+    throw new Error('Denied');
+  });
+  await flush();
+  let created = 0;
+  f.api.create = async () => {
+    created++;
+    return call();
+  };
+  await f.state.start(other, 'video');
+  assert.equal(created, 0);
+  assert.equal(f.state.getSnapshot().attempt, null);
+  assert.match(f.state.getSnapshot().error, /access is required/);
+});
+test('denying permissions while answering never accepts or enables media', async () => {
+  const f = controller(other, async () => {
+    throw new Error('Denied');
+  });
+  await flush();
+  f.set(call());
+  await f.state.refresh();
+  await f.state.accept();
+  assert.deepEqual(f.changes, []);
+  assert.equal(f.state.getSnapshot().call?.status, 'ringing');
+  assert.equal(f.state.getSnapshot().joined, false);
+});
+test('sign-out while permission preparation is pending cannot create a call later', async () => {
+  const permission = deferred<void>(),
+    f = controller(actor, () => permission.promise);
+  await flush();
+  let created = 0;
+  f.api.create = async () => {
+    created++;
+    return call();
+  };
+  const start = f.state.start(other, 'audio');
+  f.state.reset();
+  permission.resolve();
+  await start;
+  assert.equal(created, 0);
+  assert.equal(f.state.getSnapshot().call, null);
+});
+test('an account switch during permissions cannot send the old dial request as another user', async () => {
+  const permission = deferred<void>();
+  let owner = actor,
+    created = 0;
+  const controller = new CallController(
+    {
+      list: async () => [],
+      detail: async () => call(),
+      create: async () => {
+        created++;
+        return call();
+      },
+      change: async () => call(),
+    },
+    () => owner,
+    () => clientId,
+    () => false,
+    () => permission.promise,
+  );
+  controller.foreground(true);
+  await flush();
+  const start = controller.start(other, 'video');
+  owner = third;
+  permission.resolve();
+  await start;
+  assert.equal(created, 0);
+  assert.equal(controller.getSnapshot().call, null);
+});
+test('backgrounding before dial permissions finish cancels an unsent request', async () => {
+  const permission = deferred<void>(),
+    f = controller(actor, () => permission.promise);
+  await flush();
+  let created = 0;
+  f.api.create = async () => {
+    created++;
+    return call();
+  };
+  const start = f.state.start(other, 'video');
+  f.state.foreground(false);
+  permission.resolve();
+  await start;
+  assert.equal(created, 0);
+  assert.equal(f.state.getSnapshot().attempt, null);
+});
+test('native failure clears automatic connection intent until an explicit reconnect', async () => {
+  const f = controller();
+  await flush();
+  await f.state.start(other, 'video');
+  f.set(call('accepted'));
+  await f.state.refresh();
+  assert.equal(f.state.getSnapshot().joined, true);
+  f.state.mediaFailed();
+  await f.state.refresh();
+  assert.equal(f.state.getSnapshot().joined, false);
+  await f.state.join();
+  assert.equal(f.state.getSnapshot().joined, true);
 });
 test('media startup failure calls the safe error handler without exposing SDK details', async () => {
   let failed = 0,

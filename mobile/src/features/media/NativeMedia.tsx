@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, StyleSheet, Text, View } from 'react-native';
 import {
   AndroidAudioTypePresets,
@@ -28,12 +28,16 @@ export function NativeMedia({
   loadToken,
   failed,
   names,
+  children,
+  connecting,
 }: {
   id: string;
   kind: CallKind;
   loadToken: () => Promise<ReturnType<typeof mediaToken>>;
   failed: () => void;
   names: Record<string, string>;
+  children?: ReactNode;
+  connecting?: ReactNode;
 }) {
   const [room] = useState(
     () => new Room({ adaptiveStream: { pixelDensity: 'screen' }, dynacast: true }),
@@ -115,11 +119,9 @@ export function NativeMedia({
   }, [id, kind, room, loadToken, failed]);
   return (
     <RoomContext.Provider value={room}>
-      {!ready ? (
-        <Notice>Requesting permissions and connecting media...</Notice>
-      ) : (
-        <MediaControls video={kind === 'video'} names={names} />
-      )}
+      {!ready
+        ? (connecting ?? <Notice>Requesting permissions and connecting media...</Notice>)
+        : (children ?? <MediaControls video={kind === 'video'} names={names} />)}
     </RoomContext.Provider>
   );
 }

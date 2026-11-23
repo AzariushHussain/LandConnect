@@ -144,7 +144,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShadowVisible: false, headerTintColor: colors.ink }}>
               <Stack.Protected guard={state.status === 'signedIn'}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="calls" options={{ title: 'Call controls' }} />
+                <Stack.Screen name="calls" options={{ headerShown: false }} />
                 <Stack.Screen name="meetings/index" options={{ title: 'Meetings' }} />
                 <Stack.Screen name="meetings/new" options={{ title: 'Host a meeting' }} />
                 <Stack.Screen name="meetings/[id]" options={{ title: 'Meeting controls' }} />
@@ -152,7 +152,7 @@ export default function RootLayout() {
                 <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked accounts' }} />
                 <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
                 <Stack.Screen name="chats/new-group" options={{ title: 'New group' }} />
-                <Stack.Screen name="chats/[id]/index" options={{ title: 'Conversation' }} />
+                <Stack.Screen name="chats/[id]/index" options={{ headerShown: false }} />
                 <Stack.Screen name="chats/[id]/info" options={{ title: 'Group information' }} />
                 <Stack.Protected guard={state.status === 'signedIn' && canManage(state.user.role)}>
                   <Stack.Screen name="manage/index" options={{ title: 'My properties' }} />

@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -22,11 +23,14 @@ import { title } from './types';
 import { RealtimeNotice, useChatUpdates } from './use-chat-updates';
 import { BlockButton } from '../privacy/BlockButton';
 import { CallButtons } from '../calls/CallButtons';
+import { ChatAvatar } from './ChatAvatar';
+import { IconButton } from '../../ui/IconButton';
 
 export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
   const [thread] = useState(() => new Thread(id, actor, chatApi, randomUUID));
   const state = useSyncExternalStore(thread.subscribe, thread.getSnapshot);
   const [discard, setDiscard] = useState(false);
+  const [options, setOptions] = useState(false);
   const hint = useCallback(
     (event: ChatHint) => {
       if (
@@ -62,48 +66,95 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
     );
   });
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.safe}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{state.chat ? title(state.chat, actor) : 'Conversation'}</Text>
-          <RealtimeNotice />
-          {state.chat?.kind === 'direct' &&
-            state.chat.members
-              .filter((member) => member.user.id !== actor)
-              .map((member) => (
-                <View key={member.user.id} style={{ gap: 6 }}>
-                  <CallButtons peerId={member.user.id} />
-                  <BlockButton peer={member.user} />
-                </View>
-              ))}
+          <View style={styles.headerRow}>
+            <IconButton
+              icon="arrow-back"
+              label="Back to chats"
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/chats'))}
+            />
+            <ChatAvatar
+              name={state.chat ? title(state.chat, actor) : 'Conversation'}
+              group={state.chat?.kind === 'group'}
+              size={42}
+            />
+            <View style={styles.identity}>
+              <Text numberOfLines={1} style={styles.title}>
+                {state.chat ? title(state.chat, actor) : 'Conversation'}
+              </Text>
+              <Text numberOfLines={1} style={styles.subtitle}>
+                {state.chat?.kind === 'group'
+                  ? `${state.chat.members.length} participants`
+                  : 'LandConnect chat'}
+              </Text>
+            </View>
+            {state.chat?.kind === 'direct' &&
+              !state.unavailable &&
+              state.chat.members
+                .filter((member) => member.user.id !== actor)
+                .map((member) => (
+                  <CallButtons key={member.user.id} peerId={member.user.id} compact />
+                ))}
+            <IconButton
+              icon="ellipsis-vertical"
+              label="Conversation options"
+              onPress={() => setOptions(true)}
+            />
+          </View>
           {!!state.error && <Notice error>{state.error}</Notice>}
-          {!state.unavailable && (
-            <Action
-              label={state.moreNew ? 'Load more new messages' : 'Refresh chat'}
-              secondary
-              busy={state.syncing}
-              onPress={() => void thread.sync()}
-            />
-          )}
-          {state.chat?.kind === 'group' && (
-            <Action
-              label="Host a meeting with this group"
-              secondary
-              disabled={state.unavailable}
-              onPress={() => router.push({ pathname: '/meetings/new', params: { group: id } })}
-            />
-          )}
-          {state.chat?.kind === 'group' && (
-            <Action
-              label="Group information"
-              secondary
-              onPress={() => router.push({ pathname: '/chats/[id]/info', params: { id } })}
-            />
-          )}
         </View>
+        <Modal
+          visible={options}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOptions(false)}
+        >
+          <View style={styles.overlay}>
+            <View style={styles.menu}>
+              <Text style={styles.title}>Conversation options</Text>
+              <RealtimeNotice />
+              {state.chat?.kind === 'direct' &&
+                state.chat.members
+                  .filter((member) => member.user.id !== actor)
+                  .map((member) => <BlockButton key={member.user.id} peer={member.user} />)}
+              {!state.unavailable && (
+                <Action
+                  label={state.moreNew ? 'Load more new messages' : 'Refresh chat'}
+                  secondary
+                  busy={state.syncing}
+                  onPress={() => void thread.sync()}
+                />
+              )}
+              {state.chat?.kind === 'group' && (
+                <Action
+                  label="Host a meeting with this group"
+                  secondary
+                  disabled={state.unavailable}
+                  onPress={() => {
+                    setOptions(false);
+                    router.push({ pathname: '/meetings/new', params: { group: id } });
+                  }}
+                />
+              )}
+              {state.chat?.kind === 'group' && (
+                <Action
+                  label="Group information"
+                  secondary
+                  onPress={() => {
+                    setOptions(false);
+                    router.push({ pathname: '/chats/[id]/info', params: { id } });
+                  }}
+                />
+              )}
+              <Action label="Close options" secondary onPress={() => setOptions(false)} />
+            </View>
+          </View>
+        </Modal>
         {state.loading ? (
           <ActivityIndicator color={colors.green} accessibilityLabel="Loading message history" />
         ) : (
@@ -115,13 +166,18 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <View style={[styles.bubble, item.sender.id === actor && styles.mine]}>
-                <Text style={styles.sender}>
-                  {item.sender.id === actor ? 'You' : item.sender.display_name}
-                </Text>
+                {item.sender.id !== actor && state.chat?.kind === 'group' && (
+                  <Text style={styles.sender}>{item.sender.display_name}</Text>
+                )}
                 <Text selectable style={styles.body}>
                   {item.body}
                 </Text>
-                <Text style={styles.time}>{new Date(item.created_at).toLocaleString()}</Text>
+                <Text style={styles.time}>
+                  {new Date(item.created_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
               </View>
             )}
             ListEmptyComponent={
@@ -164,23 +220,28 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
                 )}
               </>
             )}
-            <TextInput
-              accessibilityLabel="Message text"
-              multiline
-              maxLength={8000}
-              editable={!state.loading && !state.attempt}
-              value={state.draft}
-              onChangeText={thread.draft}
-              placeholder="Write a message"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-            <Action
-              label={state.attempt ? 'Retry same message' : 'Send message'}
-              busy={!!state.attempt?.sending}
-              disabled={state.loading || !state.draft.trim()}
-              onPress={() => void thread.send()}
-            />
+            <View style={styles.composerRow}>
+              <TextInput
+                accessibilityLabel="Message text"
+                multiline
+                maxLength={8000}
+                editable={!state.loading && !state.attempt}
+                value={state.draft}
+                onChangeText={thread.draft}
+                placeholder="Write a message"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+              <IconButton
+                icon="send"
+                tone="success"
+                size={52}
+                label={state.attempt ? 'Retry same message' : 'Send message'}
+                busy={!!state.attempt?.sending}
+                disabled={state.loading || !state.draft.trim()}
+                onPress={() => void thread.send()}
+              />
+            </View>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -189,8 +250,20 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
 }
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: 16, paddingVertical: 8, gap: 6 },
-  title: { fontSize: 21, fontWeight: '700', color: colors.ink },
+  header: {
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  identity: { flex: 1, marginLeft: 7, gap: 4 },
+  title: { fontSize: 17, fontWeight: '600', color: colors.ink },
+  subtitle: { fontSize: 12, color: colors.muted },
+  overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#00000066' },
+  menu: { padding: 22, gap: 14, borderRadius: 20, backgroundColor: colors.surface },
   messages: { padding: 16, gap: 12, flexGrow: 1 },
   bubble: {
     maxWidth: '90%',
@@ -200,16 +273,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     gap: 6,
   },
-  mine: { alignSelf: 'flex-end', backgroundColor: colors.pale },
+  mine: { alignSelf: 'flex-end', backgroundColor: '#DDF3D7', borderTopRightRadius: 4 },
   sender: { color: colors.green, fontWeight: '700' },
   body: { color: colors.ink, fontSize: 16, lineHeight: 23 },
   time: { color: colors.muted, fontSize: 11 },
-  composer: { padding: 16, gap: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  composer: { padding: 12, gap: 8 },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   input: {
     maxHeight: 120,
+    flex: 1,
     minHeight: 50,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 24,
     backgroundColor: colors.surface,
     color: colors.ink,
     fontSize: 16,

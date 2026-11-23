@@ -14,6 +14,7 @@ import { CallController } from '../features/calls/controller';
 import { randomUUID } from 'expo-crypto';
 import { MeetingsApi } from '../features/meetings/api';
 import { MeetingSession } from '../features/meetings/session';
+import { prepareCallMedia } from '../features/calls/permissions';
 
 export const client = new ApiClient(validateApiUrl(process.env.EXPO_PUBLIC_API_URL, __DEV__));
 export const authApi = new AuthApi(client);
@@ -29,6 +30,13 @@ export const calls: CallController = new CallController(
   () => session.access()?.user.id,
   randomUUID,
   () => meetingSession.getSnapshot().joined || meetingSession.getSnapshot().joining,
+  async (kind) => {
+    const token = session.access()?.token;
+    if (!token) throw new Error('Sign in before calling');
+    await prepareCallMedia(kind);
+    if (session.access()?.token !== token)
+      throw new Error('Session changed during permission request');
+  },
 );
 export const meetingsApi = new MeetingsApi(client, session, __DEV__);
 export const meetingSession: MeetingSession = new MeetingSession(

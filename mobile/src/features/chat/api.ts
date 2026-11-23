@@ -7,6 +7,7 @@ import {
   HistoryQuery,
   history,
   message,
+  person,
   row,
   uuid,
   validateBody,
@@ -83,6 +84,29 @@ export class ChatApi {
   }
   async direct(recipient: string) {
     return this.change('/conversations/direct', { body: { recipient_id: this.id(recipient) } });
+  }
+  async searchPeople(query: string) {
+    const term = query.trim();
+    if (Array.from(term).length < 2 || Array.from(term).length > 254)
+      throw new Error('Search with 2 to 254 characters.');
+    const { value, actor } = await this.request<unknown>(
+      `/users/search?${new URLSearchParams({ q: term })}`,
+    );
+    const page = row(value);
+    if (
+      !Array.isArray(page.items) ||
+      page.items.length > 20 ||
+      typeof page.has_more !== 'boolean' ||
+      (page.has_more && page.items.length !== 20)
+    )
+      throw new Error('Invalid people search response. Try again.');
+    const items = page.items.map(person);
+    if (
+      items.some((item) => item.id === actor) ||
+      new Set(items.map((p) => p.id)).size !== items.length
+    )
+      throw new Error('Invalid people search response. Try again.');
+    return { items, hasMore: page.has_more };
   }
   async group(name: string, members: string[]) {
     if (

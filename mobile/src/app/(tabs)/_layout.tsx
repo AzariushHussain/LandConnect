@@ -54,7 +54,7 @@ export default function MainTabs() {
       />
       <Tabs.Screen
         name="chats"
-        options={{ title: 'Chats', tabBarAccessibilityLabel: 'Chats tab' }}
+        options={{ title: 'Chats', headerShown: false, tabBarAccessibilityLabel: 'Chats tab' }}
       />
       <Tabs.Screen name="map" options={{ title: 'Map', tabBarAccessibilityLabel: 'Map tab' }} />
       <Tabs.Screen
