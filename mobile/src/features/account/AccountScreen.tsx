@@ -1,111 +1,151 @@
-import { Alert, StyleSheet, Text, View } from 'react-native';
-import { useCallback, useState } from 'react';
-import { privacyApi, session } from '../../application/services';
+import { ComponentProps } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { session } from '../../application/services';
 import { useSession } from '../../application/use-session';
-import { Action, Brand, Heading, Notice, Screen } from '../../ui/components';
+import { Screen } from '../../ui/components';
 import { colors } from '../../ui/theme';
-import { router, useFocusEffect } from 'expo-router';
 import { canManage } from '../management/form';
+import { ChatAvatar } from '../chat/ChatAvatar';
 
 export function AccountScreen() {
   const state = useSession();
-  const [privacyError, setPrivacyError] = useState('');
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      privacyApi.current().then(
-        () => {
-          if (active) setPrivacyError('');
-        },
-        () => {
-          if (active)
-            setPrivacyError(
-              'Could not refresh privacy preferences. The values shown were last confirmed on this device.',
-            );
-        },
-      );
-      return () => {
-        active = false;
-      };
-    }, []),
-  );
   if (state.status !== 'signedIn') return null;
   const { user } = state;
   return (
     <Screen bottomInset={false}>
-      <Brand />
-      <Heading
-        title={`Hello, ${user.display_name}.`}
-        detail="Welcome to your LandConnect account."
-      />
-      <View style={styles.card}>
-        <View style={styles.avatar}>
-          <Text style={styles.initial}>{user.display_name[0]?.toUpperCase()}</Text>
-        </View>
-        <Text style={styles.name}>{user.display_name}</Text>
-        <Text style={styles.email}>{user.email}</Text>
-        <View style={styles.badge}>
-          <Text style={styles.role}>{user.role}</Text>
-        </View>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.section} accessibilityRole="header">
-          Your privacy
+      <View style={styles.profile}>
+        <ChatAvatar name={user.display_name} size={88} />
+        <Text style={styles.name} accessibilityRole="header">
+          {user.display_name}
         </Text>
-        <Text style={styles.row}>Messages: {user.allow_messages ? 'Allowed' : 'Off'}</Text>
-        <Text style={styles.row}>Incoming calls: {user.allow_calls ? 'Allowed' : 'Off'}</Text>
-        <Text style={styles.note}>Last confirmed account preferences.</Text>
-        {!!privacyError && <Notice error>{privacyError}</Notice>}
-        <Action label="Privacy settings" secondary onPress={() => router.push('/privacy')} />
+        <Text selectable style={styles.email}>
+          {user.email}
+        </Text>
+        <View style={styles.badge}>
+          <Text style={styles.role}>{user.role} account</Text>
+        </View>
       </View>
-      <Action label="Call controls" secondary onPress={() => router.navigate('/calls')} />
-      <Action label="Meetings" secondary onPress={() => router.push('/meetings')} />
-      <Action
-        secondary
-        label="Sign out of this device"
-        onPress={() =>
-          Alert.alert('Sign out?', 'You will need to sign in again on this device.', [
-            { text: 'Stay signed in', style: 'cancel' },
-            { text: 'Sign out', style: 'destructive', onPress: () => void session.signOut() },
-          ])
-        }
-      />
-      {canManage(user.role) && (
-        <Action label="My properties" onPress={() => router.push('/manage')} />
-      )}
+      <Text style={styles.section} accessibilityRole="header">
+        Your account
+      </Text>
+      <View style={styles.card}>
+        {canManage(user.role) && (
+          <AccountRow
+            icon="business-outline"
+            label="My properties"
+            detail="Create and manage your listings"
+            onPress={() => router.push('/manage')}
+          />
+        )}
+        <AccountRow
+          icon="ban-outline"
+          label="Blocked contacts"
+          detail="View and unblock contacts"
+          onPress={() => router.push('/privacy/blocked')}
+        />
+      </View>
+      <View style={styles.card}>
+        <AccountRow
+          icon="log-out-outline"
+          label="Sign out"
+          detail="Sign out of this device"
+          danger
+          onPress={() =>
+            Alert.alert('Sign out?', 'You will need to sign in again on this device.', [
+              { text: 'Stay signed in', style: 'cancel' },
+              { text: 'Sign out', style: 'destructive', onPress: () => void session.signOut() },
+            ])
+          }
+        />
+      </View>
+      <Text style={styles.brand}>LandConnect</Text>
     </Screen>
   );
 }
 
+function AccountRow({
+  icon,
+  label,
+  detail,
+  onPress,
+  danger = false,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  detail: string;
+  onPress: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={detail}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.pale }]}
+    >
+      <View style={[styles.icon, danger && { backgroundColor: '#FBEDED' }]}>
+        <Ionicons name={icon} size={23} color={danger ? colors.error : colors.green} />
+      </View>
+      <View style={styles.copy}>
+        <Text style={[styles.label, danger && { color: colors.error }]}>{label}</Text>
+        <Text style={styles.detail}>{detail}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 20,
+  profile: {
+    alignItems: 'center',
     backgroundColor: colors.surface,
-    padding: 24,
+    paddingVertical: 30,
+    paddingHorizontal: 22,
+    borderRadius: 26,
     gap: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginTop: 6,
+    marginBottom: 8,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  name: { color: colors.ink, fontSize: 25, lineHeight: 33, fontWeight: '600', textAlign: 'center' },
+  email: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  badge: {
+    borderRadius: 20,
+    backgroundColor: colors.pale,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  role: { color: colors.green, fontSize: 12, fontWeight: '500', textTransform: 'capitalize' },
+  section: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    marginLeft: 4,
+  },
+  card: { backgroundColor: colors.surface, borderRadius: 20, overflow: 'hidden' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 18,
+    minHeight: 84,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: colors.pale,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  initial: { color: colors.green, fontSize: 28, fontWeight: '700' },
-  name: { color: colors.ink, fontSize: 22, fontWeight: '700' },
-  email: { color: colors.muted, fontSize: 16 },
-  badge: {
-    alignSelf: 'flex-start',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: colors.pale,
-  },
-  role: { textTransform: 'capitalize', color: colors.green, fontWeight: '600' },
-  section: { color: colors.ink, fontSize: 18, fontWeight: '700' },
-  row: { color: colors.ink, fontSize: 16 },
-  note: { color: colors.muted, lineHeight: 22 },
+  copy: { flex: 1, gap: 6 },
+  label: { color: colors.ink, fontSize: 16, fontWeight: '500' },
+  detail: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+  brand: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 12 },
 });

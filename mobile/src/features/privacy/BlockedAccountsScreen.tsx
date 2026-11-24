@@ -30,7 +30,7 @@ export function BlockedAccountsScreen() {
         ListHeaderComponent={
           <View style={styles.section}>
             <Heading
-              title="Blocked accounts"
+              title="Blocked contacts"
               detail="Only you can view this list. Unblocking allows communication when the other account's preferences and blocks also allow it."
             />
             {!!state.notice && <Notice>{state.notice}</Notice>}

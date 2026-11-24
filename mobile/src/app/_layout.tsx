@@ -155,7 +155,7 @@ export default function RootLayout() {
                 <Stack.Screen name="meetings/new" options={{ title: 'Host a meeting' }} />
                 <Stack.Screen name="meetings/[id]" options={{ title: 'Meeting controls' }} />
                 <Stack.Screen name="privacy/index" options={{ title: 'Privacy settings' }} />
-                <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked accounts' }} />
+                <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked contacts' }} />
                 <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
                 <Stack.Screen name="property-map/[id]" options={{ title: 'Property location' }} />
                 <Stack.Screen name="chats/new-group" options={{ title: 'New group' }} />
