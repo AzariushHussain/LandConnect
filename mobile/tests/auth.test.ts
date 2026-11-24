@@ -3,7 +3,13 @@ import test from 'node:test';
 import { ApiClient, ApiError } from '../src/api/client';
 import { AuthApi } from '../src/features/auth/api';
 import { validateApiUrl } from '../src/config/api-url';
-import { validateRegistration } from '../src/features/auth/validation';
+import {
+  credentialErrors,
+  registrationErrors,
+  validateCredentials,
+  validateRegistration,
+} from '../src/features/auth/validation';
+import type { Registration } from '../src/features/auth/types';
 
 test('release refuses HTTP, and development only allows local HTTP origins', () => {
   assert.equal(validateApiUrl('https://api.example.com/', false), 'https://api.example.com');
@@ -96,4 +102,58 @@ test('registration matches backend password/name constraints and requires confir
   assert.match(validateRegistration({ ...data, password: 'short' }, 'short')!, /12/);
   assert.match(validateRegistration(data, 'different')!, /do not match/);
   assert.match(validateRegistration({ ...data, display_name: ' ' }, data.password)!, /name/);
+});
+
+test('auth forms report every invalid field without echoing submitted values', () => {
+  const errors = registrationErrors(
+    { email: 'invalid', password: 'secret', display_name: ' ', role: 'buyer' },
+    'different',
+  );
+  assert.ok(errors.email && errors.password && errors.display_name && errors.confirmation);
+  assert.doesNotMatch(JSON.stringify(errors), /secret|different|invalid/);
+});
+
+test('Unicode password limits count characters like the backend, not UTF-16 units', () => {
+  const data: Registration = {
+    email: 'buyer@example.com',
+    password: '🔒'.repeat(6),
+    display_name: 'Buyer',
+    role: 'buyer',
+  };
+  assert.match(registrationErrors(data, data.password).password!, /12/);
+  data.password = '🔒'.repeat(12);
+  assert.deepEqual(registrationErrors(data, data.password), {});
+  assert.equal(validateCredentials({ email: data.email, password: '🔒'.repeat(128) }), null);
+  assert.ok(credentialErrors({ email: data.email, password: '🔒'.repeat(129) }).password);
+});
+
+test('Unicode name limits and registration roles match the allowed server contract', () => {
+  const data: Registration = {
+    email: 'buyer@example.com',
+    password: 'long-password-123',
+    display_name: '🌱'.repeat(80),
+    role: 'broker',
+  };
+  assert.deepEqual(registrationErrors(data, data.password), {});
+  assert.ok(
+    registrationErrors({ ...data, display_name: '🌱'.repeat(81) }, data.password).display_name,
+  );
+  assert.ok(
+    registrationErrors({ ...data, role: 'admin' } as unknown as Registration, data.password).role,
+  );
+});
+
+test('login accepts existing short passwords while signup still checks confirmation and minimum length', () => {
+  const credentials = { email: 'buyer@example.com', password: 'x' };
+  assert.deepEqual(credentialErrors(credentials), {});
+  assert.ok(
+    registrationErrors({ ...credentials, display_name: 'Buyer', role: 'buyer' }, 'x').password,
+  );
+  const password = '  twelve-or-more  ';
+  const errors = registrationErrors(
+    { ...credentials, password, display_name: 'Buyer', role: 'buyer' },
+    password.trim(),
+  );
+  assert.equal(errors.password, undefined);
+  assert.ok(errors.confirmation);
 });

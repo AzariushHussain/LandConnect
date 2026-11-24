@@ -1,198 +1,386 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInputInstance,
+  View,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect, usePreventRemove } from 'expo-router';
 import { authApi, session } from '../../application/services';
 import { useSession } from '../../application/use-session';
-import { Action, Brand, Field, Heading, Notice, Screen } from '../../ui/components';
+import { Action, Brand, Notice, Screen } from '../../ui/components';
 import { colors } from '../../ui/theme';
 import { ApiError } from '../../api/client';
 import { Role } from './types';
-import { validateCredentials, validateRegistration } from './validation';
+import { AuthErrors, credentialErrors, registrationErrors } from './validation';
+import { AuthField } from './AuthField';
 
 type Props = { registering: boolean; initialEmail?: string; registered?: boolean };
+const roles = [
+  {
+    value: 'buyer',
+    label: 'Buyer',
+    icon: 'search-outline',
+    detail: 'Find land and connect with owners.',
+  },
+  {
+    value: 'seller',
+    label: 'Seller',
+    icon: 'home-outline',
+    detail: 'Create and manage your land listings.',
+  },
+  {
+    value: 'broker',
+    label: 'Broker',
+    icon: 'briefcase-outline',
+    detail: 'Manage listings and connect with clients.',
+  },
+] as const;
 
 export function AuthScreen({ registering, initialEmail = '', registered = false }: Props) {
   const state = useSession();
-  const [email, setEmail] = useState(initialEmail);
-  const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [name, setName] = useState('');
-  const [role, setRole] = useState<Role>('buyer');
-  const [visible, setVisible] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const submitting = useRef(false);
-  const mounted = useRef(true);
+  const [email, setEmail] = useState(initialEmail),
+    [password, setPassword] = useState(''),
+    [confirmation, setConfirmation] = useState(''),
+    [name, setName] = useState(''),
+    [role, setRole] = useState<Role>('buyer'),
+    [visible, setVisible] = useState(false),
+    [confirmVisible, setConfirmVisible] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [errors, setErrors] = useState<AuthErrors>({});
+  const submitting = useRef(false),
+    mounted = useRef(true);
+  const nameInput = useRef<TextInputInstance>(null),
+    emailInput = useRef<TextInputInstance>(null),
+    passwordInput = useRef<TextInputInstance>(null),
+    confirmationInput = useRef<TextInputInstance>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
-
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setPassword('');
+        setConfirmation('');
+        setVisible(false);
+        setConfirmVisible(false);
+      },
+      [],
+    ),
+  );
+  const disablePrevention = usePreventRemove(registering && busy, () =>
+    Alert.alert('Creating your account', 'Please wait for the account request to finish.'),
+  );
+  function edited(field: keyof AuthErrors) {
+    setErrors((current) => ({ ...current, [field]: undefined }));
+    setError('');
+  }
   async function submit() {
     if (submitting.current) return;
     const credentials = { email: email.trim().toLowerCase(), password };
     const registration = { ...credentials, display_name: name.trim(), role };
     const invalid = registering
-      ? validateRegistration(registration, confirmation)
-      : validateCredentials(credentials);
-    if (invalid) {
-      setError(invalid);
+      ? registrationErrors(registration, confirmation)
+      : credentialErrors(credentials);
+    setErrors(invalid);
+    setError('');
+    if (Object.keys(invalid).length) {
+      if (invalid.display_name) nameInput.current?.focus();
+      else if (invalid.email) emailInput.current?.focus();
+      else if (invalid.password) passwordInput.current?.focus();
+      else if (invalid.confirmation) confirmationInput.current?.focus();
       return;
     }
     submitting.current = true;
     setBusy(true);
-    setError('');
+    Keyboard.dismiss();
     try {
       if (registering) {
         await authApi.register(registration);
-        if (mounted.current)
+        if (mounted.current) {
+          setBusy(false);
+          disablePrevention();
           router.dismissTo({
             pathname: '/sign-in',
             params: { email: credentials.email, registered: 'true' },
           });
-      } else {
-        await session.signIn(credentials);
-      }
+        }
+      } else await session.signIn(credentials);
     } catch (failure) {
-      if (mounted.current)
-        setError(
-          !registering && failure instanceof ApiError && failure.status === 401
-            ? 'Incorrect email or password.'
-            : failure instanceof Error
-              ? failure.message
-              : 'Please try again.',
-        );
+      if (mounted.current) {
+        if (registering && failure instanceof ApiError && failure.status === 409) {
+          setErrors({ email: failure.message });
+          setError(failure.message);
+        } else
+          setError(
+            !registering && failure instanceof ApiError && failure.status === 401
+              ? 'Incorrect email or password.'
+              : registering && (!(failure instanceof ApiError) || failure.status >= 500)
+                ? 'Could not confirm account creation. Try signing in before submitting again.'
+                : failure instanceof Error
+                  ? failure.message
+                  : 'Please try again.',
+          );
+      }
     } finally {
       submitting.current = false;
       if (mounted.current) {
         setBusy(false);
         setPassword('');
         setConfirmation('');
+        setVisible(false);
+        setConfirmVisible(false);
       }
     }
   }
-
+  function switchScreen() {
+    if (submitting.current) return;
+    setPassword('');
+    setConfirmation('');
+    const address = email.trim().toLowerCase();
+    if (registering)
+      router.dismissTo({ pathname: '/sign-in', params: { email: address, registered: 'false' } });
+    else router.push({ pathname: '/register', params: { email: address } });
+  }
   return (
     <Screen>
-      <Brand />
-      <Heading
-        title={registering ? 'Find your place.' : 'Welcome back.'}
-        detail={
-          registering
-            ? 'Create your account and connect with the land community.'
-            : 'Sign in to your LandConnect account.'
-        }
-      />
-      {registered && <Notice>Your account is ready. Sign in to continue.</Notice>}
-      {!registering && state.status === 'signedOut' && state.message && (
+      <View style={styles.hero}>
+        <Brand />
+        <Text style={styles.title} accessibilityRole="header">
+          {registering ? 'Create your account' : 'Welcome back'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {registering
+            ? 'Find land, list properties and connect with the right people.'
+            : 'Sign in to explore land and stay connected.'}
+        </Text>
+      </View>
+      {registered && (
+        <View style={styles.success}>
+          <Ionicons name="checkmark-circle-outline" color={colors.green} size={22} />
+          <View style={styles.noticeCopy}>
+            <Notice>Your account is ready. Sign in to continue.</Notice>
+          </View>
+        </View>
+      )}
+      {!registering && state.status === 'signedOut' && !!state.message && (
         <Notice>{state.message}</Notice>
       )}
-      {registering && (
-        <Field
-          label="Your name"
-          value={name}
-          onChangeText={setName}
-          maxLength={80}
-          autoComplete="name"
-          editable={!busy}
-        />
-      )}
-      <Field
-        label="Email address"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        textContentType="emailAddress"
-        maxLength={254}
-        editable={!busy}
-      />
-      <Field
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry={!visible}
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete={registering ? 'new-password' : 'current-password'}
-        textContentType={registering ? 'newPassword' : 'password'}
-        maxLength={128}
-        editable={!busy}
-      />
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: visible }}
-        onPress={() => setVisible(!visible)}
-        style={styles.toggle}
-      >
-        <Text style={styles.toggleText}>{visible ? 'Hide password' : 'Show password'}</Text>
-      </Pressable>
-      {registering && (
-        <>
-          <Notice>Use 12 or more characters.</Notice>
-          <Field
-            label="Confirm password"
-            value={confirmation}
-            onChangeText={setConfirmation}
-            secureTextEntry={!visible}
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={128}
+      <View style={styles.form}>
+        {registering && (
+          <AuthField
+            label="Display name"
+            icon="person-outline"
+            inputRef={nameInput}
+            value={name}
+            error={errors.display_name}
+            placeholder="How others will see you"
+            hint="Shown on your profile and in chats."
+            onChangeText={(value) => {
+              setName(value);
+              edited('display_name');
+            }}
+            maxLength={160}
+            autoComplete="name"
+            textContentType="name"
+            autoCapitalize="words"
             editable={!busy}
+            returnKeyType="next"
+            onSubmitEditing={() => emailInput.current?.focus()}
           />
-          <Text style={styles.label}>I am a</Text>
-          <View style={styles.roles}>
-            {(['buyer', 'seller', 'broker'] as const).map((item) => (
-              <Pressable
-                key={item}
-                disabled={busy}
-                accessibilityRole="radio"
-                accessibilityLabel={item}
-                accessibilityState={{ checked: item === role, disabled: busy }}
-                onPress={() => setRole(item)}
-                style={[styles.role, role === item && styles.selected]}
-              >
-                <Text style={[styles.roleLabel, role === item && { color: '#FFFFFF' }]}>
-                  {item}
-                </Text>
-              </Pressable>
-            ))}
+        )}
+        <AuthField
+          label="Email address"
+          icon="mail-outline"
+          inputRef={emailInput}
+          value={email}
+          error={errors.email}
+          placeholder="you@example.com"
+          onChangeText={(value) => {
+            setEmail(value);
+            edited('email');
+          }}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          textContentType="emailAddress"
+          maxLength={254}
+          editable={!busy}
+          returnKeyType="next"
+          onSubmitEditing={() => passwordInput.current?.focus()}
+        />
+        <AuthField
+          label="Password"
+          icon="lock-closed-outline"
+          inputRef={passwordInput}
+          value={password}
+          error={errors.password}
+          hint={registering ? 'Use 12–128 characters. Spaces and symbols are welcome.' : undefined}
+          placeholder={registering ? 'Create a password' : 'Enter your password'}
+          onChangeText={(value) => {
+            setPassword(value);
+            edited('password');
+            edited('confirmation');
+          }}
+          secureTextEntry={!visible}
+          visible={visible}
+          onVisibility={() => setVisible(!visible)}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete={registering ? 'new-password' : 'current-password'}
+          textContentType={registering ? 'newPassword' : 'password'}
+          maxLength={256}
+          editable={!busy}
+          returnKeyType={registering ? 'next' : 'go'}
+          onSubmitEditing={() => (registering ? confirmationInput.current?.focus() : void submit())}
+        />
+        {registering && (
+          <>
+            <AuthField
+              label="Confirm password"
+              icon="lock-closed-outline"
+              inputRef={confirmationInput}
+              value={confirmation}
+              error={errors.confirmation}
+              placeholder="Enter the password again"
+              onChangeText={(value) => {
+                setConfirmation(value);
+                edited('confirmation');
+              }}
+              secureTextEntry={!confirmVisible}
+              visible={confirmVisible}
+              onVisibility={() => setConfirmVisible(!confirmVisible)}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              maxLength={256}
+              editable={!busy}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            <View style={styles.roleSection}>
+              <Text style={styles.label}>Choose your account type</Text>
+              <View style={styles.roles} accessibilityRole="radiogroup">
+                {roles.map((item) => (
+                  <Pressable
+                    key={item.value}
+                    disabled={busy}
+                    accessibilityRole="radio"
+                    accessibilityLabel={item.label}
+                    accessibilityHint={item.detail}
+                    accessibilityState={{ checked: item.value === role, disabled: busy }}
+                    onPress={() => {
+                      setRole(item.value);
+                      edited('role');
+                    }}
+                    style={[styles.role, item.value === role && styles.selected]}
+                  >
+                    <Ionicons
+                      name={item.icon}
+                      size={22}
+                      color={item.value === role ? colors.green : colors.muted}
+                    />
+                    <Text
+                      style={[styles.roleLabel, item.value === role && { color: colors.green }]}
+                    >
+                      {item.label}
+                    </Text>
+                    {item.value === role && (
+                      <Ionicons name="checkmark-circle" color={colors.green} size={16} />
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.roleDetail}>
+                {roles.find((item) => item.value === role)!.detail}
+              </Text>
+              {!!errors.role && <Notice error>{errors.role}</Notice>}
+            </View>
+          </>
+        )}
+        {!!error && (
+          <View style={styles.error}>
+            <Notice error>{error}</Notice>
           </View>
-        </>
-      )}
-      {!!error && <Notice error>{error}</Notice>}
-      <Action
-        label={registering ? 'Create account' : 'Sign in'}
-        onPress={() => void submit()}
-        busy={busy}
-      />
-      <Action
-        label={registering ? 'Already a member? Sign in' : 'New here? Create an account'}
-        secondary
-        disabled={busy}
-        onPress={() => (registering ? router.dismissTo('/sign-in') : router.push('/register'))}
-      />
+        )}
+        <Action
+          label={registering ? 'Create account' : 'Sign in'}
+          onPress={() => void submit()}
+          busy={busy}
+        />
+      </View>
+      <View style={styles.switchRow}>
+        <Text style={styles.switchText}>
+          {registering ? 'Already have an account?' : 'New to LandConnect?'}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy}
+          accessibilityState={{ disabled: busy }}
+          onPress={switchScreen}
+          style={styles.switchLink}
+        >
+          <Text style={[styles.link, busy && { opacity: 0.5 }]}>
+            {registering ? 'Sign in' : 'Create account'}
+          </Text>
+        </Pressable>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  toggle: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
-  toggleText: { color: colors.green, fontWeight: '600', fontSize: 14 },
-  label: { color: colors.ink, fontWeight: '600', fontSize: 14 },
-  roles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  role: {
+  hero: { gap: 10, marginBottom: 4 },
+  title: { color: colors.ink, fontSize: 30, lineHeight: 37, fontWeight: '600' },
+  subtitle: { color: colors.muted, fontSize: 14, lineHeight: 22 },
+  form: { backgroundColor: colors.surface, padding: 20, borderRadius: 24, gap: 20 },
+  success: {
+    backgroundColor: colors.pale,
+    borderRadius: 14,
     padding: 14,
-    borderRadius: 12,
-    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  noticeCopy: { flex: 1 },
+  label: { color: colors.ink, fontSize: 13, fontWeight: '600' },
+  roleSection: { gap: 10 },
+  roles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  role: {
+    flexGrow: 1,
+    flexBasis: 72,
+    minHeight: 78,
+    padding: 10,
+    gap: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderRadius: 14,
+    backgroundColor: '#FBFCFA',
   },
-  selected: { backgroundColor: colors.green, borderColor: colors.green },
-  roleLabel: { textTransform: 'capitalize', fontWeight: '600', color: colors.ink, fontSize: 15 },
+  selected: { borderColor: colors.green, backgroundColor: colors.pale },
+  roleLabel: { color: colors.muted, fontSize: 13, fontWeight: '500' },
+  roleDetail: { color: colors.muted, fontSize: 12, lineHeight: 19 },
+  error: { borderRadius: 12, backgroundColor: '#FBEDED', padding: 12 },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  switchText: { color: colors.muted, fontSize: 13 },
+  switchLink: { minHeight: 44, justifyContent: 'center' },
+  link: { color: colors.green, fontSize: 14, fontWeight: '600' },
 });
