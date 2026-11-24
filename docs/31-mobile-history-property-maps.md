@@ -8,6 +8,8 @@ This stage replaces the public Map tab with Calls, removes the map shortcut from
 
 The bottom navigation is now Listings, Chats, Calls and My Account. The Calls tab is a history screen; the existing foreground call-control route remains separate. Opening history does not obtain a media token, join a room or activate the microphone/camera.
 
+The Calls tab hides the navigator's default title bar and uses its own Call history heading. The screen applies the top safe-area inset itself, preventing a duplicate Calls label while keeping content below the status bar. The bottom-tab label remains Calls.
+
 History shows direct and group-conversation calls together, newest first. Each row contains the other person's name or the group's call title, direction, status, audio/video type and date/time. All calls and Missed are separate filters. Missed means an incoming direct call that the server explicitly marked missed; outgoing unanswered calls and group invitations are not guessed to be incoming missed calls.
 
 Audio/video controls reuse the existing direct/group call components. They start a callback only after a tap and retain the normal permission/privacy checks. If the relevant media controller already has a call joined, its existing return-to-call behavior applies. An ended group entry starts or finds a current conversation call; it does not revive an ended room.

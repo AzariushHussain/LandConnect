@@ -57,7 +57,7 @@ export function CallHistoryScreen({ actor }: { actor: string }) {
     }, [history, actor]),
   );
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <Text style={styles.title}>Call history</Text>
         <Text style={styles.subtitle}>Your direct and group calls, most recent first.</Text>

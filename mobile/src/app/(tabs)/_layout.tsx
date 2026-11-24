@@ -58,7 +58,7 @@ export default function MainTabs() {
       />
       <Tabs.Screen
         name="call-history"
-        options={{ title: 'Calls', tabBarAccessibilityLabel: 'Calls tab' }}
+        options={{ title: 'Calls', headerShown: false, tabBarAccessibilityLabel: 'Calls tab' }}
       />
       <Tabs.Screen
         name="account"
