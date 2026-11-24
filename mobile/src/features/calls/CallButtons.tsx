@@ -6,18 +6,28 @@ import { View } from 'react-native';
 import { active } from './api';
 import { useCalls } from './use-calls';
 
-export function CallButtons({ peerId, compact = false }: { peerId: string; compact?: boolean }) {
+export function CallButtons({
+  peerId,
+  compact = false,
+  disabled = false,
+  onOpen,
+}: {
+  peerId: string;
+  compact?: boolean;
+  disabled?: boolean;
+  onOpen?: () => void;
+}) {
   const state = useCalls();
+  function open() {
+    onOpen?.();
+    router.navigate('/calls');
+  }
   if (peerId === session.access()?.user.id) return null;
   if (active(state.call) || state.attempt)
     return compact ? (
-      <IconButton
-        icon="call"
-        label="Return to current call"
-        onPress={() => router.navigate('/calls')}
-      />
+      <IconButton icon="call" label="Return to current call" disabled={disabled} onPress={open} />
     ) : (
-      <Action label="Open current call" secondary onPress={() => router.navigate('/calls')} />
+      <Action label="Open current call" secondary disabled={disabled} onPress={open} />
     );
   if (compact)
     return (
@@ -25,19 +35,19 @@ export function CallButtons({ peerId, compact = false }: { peerId: string; compa
         <IconButton
           icon="call-outline"
           label="Audio call"
-          disabled={state.busy || !state.foreground}
+          disabled={disabled || state.busy || !state.foreground}
           onPress={() => {
             void calls.start(peerId, 'audio');
-            router.navigate('/calls');
+            open();
           }}
         />
         <IconButton
           icon="videocam-outline"
           label="Video call"
-          disabled={state.busy || !state.foreground}
+          disabled={disabled || state.busy || !state.foreground}
           onPress={() => {
             void calls.start(peerId, 'video');
-            router.navigate('/calls');
+            open();
           }}
         />
       </View>
@@ -47,19 +57,19 @@ export function CallButtons({ peerId, compact = false }: { peerId: string; compa
       <Action
         label="Audio call"
         secondary
-        disabled={state.busy || !state.foreground}
+        disabled={disabled || state.busy || !state.foreground}
         onPress={() => {
           void calls.start(peerId, 'audio');
-          router.navigate('/calls');
+          open();
         }}
       />
       <Action
         label="Video call"
         secondary
-        disabled={state.busy || !state.foreground}
+        disabled={disabled || state.busy || !state.foreground}
         onPress={() => {
           void calls.start(peerId, 'video');
-          router.navigate('/calls');
+          open();
         }}
       />
     </>

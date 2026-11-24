@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -21,7 +22,6 @@ import { Thread } from './thread';
 import { ChatHint } from './realtime';
 import { title } from './types';
 import { RealtimeNotice, useChatUpdates } from './use-chat-updates';
-import { BlockButton } from '../privacy/BlockButton';
 import { CallButtons } from '../calls/CallButtons';
 import { ChatAvatar } from './ChatAvatar';
 import { IconButton } from '../../ui/IconButton';
@@ -79,21 +79,29 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
               label="Back to chats"
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/chats'))}
             />
-            <ChatAvatar
-              name={state.chat ? title(state.chat, actor) : 'Conversation'}
-              group={state.chat?.kind === 'group'}
-              size={42}
-            />
-            <View style={styles.identity}>
-              <Text numberOfLines={1} style={styles.title}>
-                {state.chat ? title(state.chat, actor) : 'Conversation'}
-              </Text>
-              <Text numberOfLines={1} style={styles.subtitle}>
-                {state.chat?.kind === 'group'
-                  ? `${state.chat.members.length} participants`
-                  : 'LandConnect chat'}
-              </Text>
-            </View>
+            <Pressable
+              style={styles.groupLink}
+              accessibilityRole={state.chat?.kind === 'group' ? 'button' : undefined}
+              accessibilityLabel={state.chat?.kind === 'group' ? 'Group information' : undefined}
+              disabled={state.chat?.kind !== 'group' || state.unavailable}
+              onPress={() => router.push({ pathname: '/chats/[id]/info', params: { id } })}
+            >
+              <ChatAvatar
+                name={state.chat ? title(state.chat, actor) : 'Conversation'}
+                group={state.chat?.kind === 'group'}
+                size={42}
+              />
+              <View style={styles.identity}>
+                <Text numberOfLines={1} style={styles.title}>
+                  {state.chat ? title(state.chat, actor) : 'Conversation'}
+                </Text>
+                <Text numberOfLines={1} style={styles.subtitle}>
+                  {state.chat?.kind === 'group'
+                    ? `${state.chat.members.length} participants`
+                    : 'LandConnect chat'}
+                </Text>
+              </View>
+            </Pressable>
             {state.chat?.kind === 'direct' &&
               !state.unavailable &&
               state.chat.members
@@ -122,10 +130,6 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
             <View style={styles.menu}>
               <Text style={styles.title}>Conversation options</Text>
               <RealtimeNotice />
-              {state.chat?.kind === 'direct' &&
-                state.chat.members
-                  .filter((member) => member.user.id !== actor)
-                  .map((member) => <BlockButton key={member.user.id} peer={member.user} />)}
               {!state.unavailable && (
                 <Action
                   label={state.moreNew ? 'Load more new messages' : 'Refresh chat'}
@@ -246,6 +250,7 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
   );
 }
 const styles = StyleSheet.create({
+  groupLink: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   safe: { flex: 1, backgroundColor: colors.background },
   header: {
     paddingHorizontal: 6,

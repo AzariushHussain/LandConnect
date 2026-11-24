@@ -6,7 +6,13 @@ import { IconButton } from '../../ui/IconButton';
 import { useMeeting } from '../meetings/use-meetings';
 import { CallKind } from './api';
 
-export function GroupCallButtons({ conversationId }: { conversationId: string }) {
+export function GroupCallButtons({
+  conversationId,
+  expanded = false,
+}: {
+  conversationId: string;
+  expanded?: boolean;
+}) {
   const focused = useRef(true);
   useFocusEffect(
     useCallback(() => {
@@ -32,16 +38,22 @@ export function GroupCallButtons({ conversationId }: { conversationId: string })
       <IconButton
         icon="call"
         label="Return to group call"
+        caption={expanded ? 'Return' : undefined}
+        tone={expanded ? 'soft' : 'plain'}
+        size={expanded ? 52 : 46}
         onPress={() =>
           router.navigate({ pathname: '/group-calls/[id]', params: { id: media.id! } })
         }
       />
     );
   return (
-    <View style={{ flexDirection: 'row' }}>
+    <View style={{ flexDirection: 'row', gap: expanded ? 26 : 0 }}>
       <IconButton
         icon="call-outline"
         label="Group audio call"
+        caption={expanded ? 'Audio' : undefined}
+        tone={expanded ? 'soft' : 'plain'}
+        size={expanded ? 52 : 46}
         busy={state.busy}
         disabled={!media.foreground}
         onPress={() => void start('audio')}
@@ -49,6 +61,9 @@ export function GroupCallButtons({ conversationId }: { conversationId: string })
       <IconButton
         icon="videocam-outline"
         label="Group video call"
+        caption={expanded ? 'Video' : undefined}
+        tone={expanded ? 'soft' : 'plain'}
+        size={expanded ? 52 : 46}
         busy={state.busy}
         disabled={!media.foreground}
         onPress={() => void start('video')}

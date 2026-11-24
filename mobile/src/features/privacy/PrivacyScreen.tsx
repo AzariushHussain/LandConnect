@@ -131,10 +131,7 @@ export function PrivacyScreen() {
         disabled={state.saving}
         onPress={() => router.push('/privacy/blocked')}
       />
-      <Notice>
-        Blocking prevents direct messaging and new invitations between the two accounts. It does not
-        erase history or remove someone from existing groups.
-      </Notice>
+      <Notice>Review previously blocked accounts and unblock them here.</Notice>
     </Screen>
   );
 }
