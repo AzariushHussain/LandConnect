@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:3000"]
     upload_dir: str = "uploads"
     redis_url: str = "redis://127.0.0.1:56379/0"
+    geocoding_url: HttpUrl = HttpUrl("https://photon.komoot.io/api/")
     chat_channel_prefix: str = Field(
         default="landconnect:chat:local", pattern=r"^[A-Za-z0-9:_-]+$", min_length=1, max_length=100
     )

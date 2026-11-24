@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.api.routes.health import migration_heads
 from app.db.session import get_db
 from app.main import app
 
@@ -18,7 +19,10 @@ def client():
     )
     with test_engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
-        connection.execute(text("INSERT INTO alembic_version VALUES ('0004_meetings')"))
+        for revision in migration_heads:
+            connection.execute(
+                text("INSERT INTO alembic_version VALUES (:revision)"), {"revision": revision}
+            )
 
     def session():
         with Session(test_engine) as db:

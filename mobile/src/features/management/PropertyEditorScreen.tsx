@@ -30,6 +30,7 @@ import { choosePropertyPhoto } from './photos';
 import { PhotoQueue } from './photo-queue';
 import { saveProperty } from './save-property';
 import { LocationPicker } from '../maps/LocationPicker';
+import { locationFields } from '../maps/address-lookup';
 
 type Active = () => boolean;
 const placeholders: Record<keyof PropertyForm, string> = {
@@ -387,7 +388,7 @@ export function PropertyEditorScreen({ id, actor }: { id?: string; actor: string
       <Section
         icon="location-outline"
         title="Location"
-        hint="Choose a point on the map or enter decimal coordinates. Address fields are filled separately."
+        hint="Choose a point on the map to prefill available address details, or enter them manually. Review the address before saving."
       >
         <PropertyAction
           icon="map-outline"
@@ -415,8 +416,16 @@ export function PropertyEditorScreen({ id, actor }: { id?: string; actor: string
           latitude={form.latitude}
           longitude={form.longitude}
           onCancel={() => setChoosingLocation(false)}
-          onConfirm={(point) => {
-            setForm((current) => ({ ...current, ...point }));
+          onConfirm={({ point, address }) => {
+            setForm((current) => ({ ...current, ...locationFields({ point, address }) }));
+            setError('');
+            setNotice(
+              address && Object.keys(address).length
+                ? 'Location fields updated. Check the address and fill any missing fields before saving.'
+                : address === null
+                  ? 'Coordinates selected. Review or enter the address, city, state and country manually.'
+                  : 'No address found. Enter the address, city, state and country for this point manually.',
+            );
             setChoosingLocation(false);
           }}
         />

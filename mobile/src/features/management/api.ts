@@ -2,6 +2,9 @@ import { ApiClient, ApiError, RequestOptions } from '../../api/client';
 import type { SessionController } from '../auth/session';
 import { isListingId, ListingRecord, ListingStatus, parseListingRecord } from '../listings/types';
 import { canManage, PropertyForm, validateProperty } from './form';
+import { parsePlaces, placeQuery } from '../maps/place-search';
+import { Coordinate, parseAddress } from '../maps/address-lookup';
+import { readCoordinate } from '../maps/geo';
 
 export type StatusFilter = 'all' | ListingStatus;
 export function parseOwnedListing(value: unknown, ownerId: string): ListingRecord {
@@ -46,6 +49,22 @@ export class ManagementApi {
   private id(id: string) {
     if (!isListingId(id)) throw new ApiError(404, 'Invalid property link.');
     return id;
+  }
+
+  async searchPlaces(query: string) {
+    const { value } = await this.request<unknown>('/locations/search', {
+      body: { q: placeQuery(query) },
+    });
+    return parsePlaces(value);
+  }
+
+  async reverseLocation(point: Coordinate) {
+    const coordinates = readCoordinate(point.latitude, point.longitude);
+    if (!coordinates) throw new Error('Choose a valid location before looking up its address.');
+    const { value } = await this.request<unknown>('/locations/reverse', {
+      body: { longitude: coordinates[0], latitude: coordinates[1] },
+    });
+    return parseAddress(value);
   }
 
   async mine(status: StatusFilter, offset: number, limit = 20) {
