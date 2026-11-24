@@ -72,6 +72,8 @@ uv run --project backend python scripts/check_mobile_listings.py
 
 ## Current verification
 
+Step 21 passes 207 mobile tests, typecheck, lint, formatting and Android development export. My properties now uses authenticated image cards, status badges, area/price/date details, compact status chips and active-only public previews. The screen is keyed by owner and uses pull-to-refresh on empty/populated results. A read-only existing-photo check returned 200 for its owner and 404 for another owner/anonymous access. See [the implementation and checklist](../docs/34-mobile-owned-property-design.md). No backend, schema or native dependency changed; physical card/gesture checks remain pending.
+
 Step 20 passes 207 mobile tests, typecheck, lint, formatting and Android development export. Login/signup have inline validation, Next/Go keyboard actions, per-password visibility controls, clearer role choices and email-preserving navigation. Unicode code-point limits now match the backend's name/password limits. See [the detailed auth explanation](../docs/33-mobile-auth-design.md). No backend, database or native dependency changed. Physical keyboard/autofill and registration-navigation checks remain pending; no real account was created or phone session signed out for testing.
 
 Step 19 passes 203 mobile tests, typecheck, lint, formatting and Android development export. My Account now shows a centered profile, role badge, direct Blocked contacts, seller/broker My properties and confirmed sign-out. The Privacy section, Meetings CTA and duplicate Call controls CTA are removed from this tab. See [the account explanation](../docs/32-mobile-account-design.md). No backend, data, route-path or native dependency changed; phone layout checks remain deferred.

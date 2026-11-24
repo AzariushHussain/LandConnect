@@ -1,16 +1,33 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { managementApi } from '../../application/services';
-import { Action, Heading, Notice } from '../../ui/components';
+import { managementApi, session } from '../../application/services';
+import { Action, Notice } from '../../ui/components';
 import { colors } from '../../ui/theme';
 import { ListingFeed } from '../listings/feed';
-import { formatDecimal } from '../listings/filters';
 import { ListingRecord } from '../listings/types';
 import { StatusFilter } from './api';
+import { OwnedPropertyCard } from './OwnedPropertyCard';
 
-export function MyPropertiesScreen() {
+const filters = [
+  { value: 'all', label: 'All' },
+  { value: 'draft', label: 'Drafts' },
+  { value: 'active', label: 'Active' },
+  { value: 'sold', label: 'Sold' },
+  { value: 'archived', label: 'Archived' },
+] as const;
+
+export function MyPropertiesScreen({ actor }: { actor: string }) {
   const [status, setStatus] = useState<StatusFilter>('all');
   const feed = useMemo(
     () =>
@@ -26,97 +43,182 @@ export function MyPropertiesScreen() {
       return feed.invalidate;
     }, [feed]),
   );
+  const access = session.access();
+  if (!access || access.user.id !== actor) return null;
+  const busy = state.status === 'loading' || state.status === 'refreshing';
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+      <View style={styles.header}>
+        <View style={styles.top}>
+          <View style={styles.heading}>
+            <Text style={styles.total} accessibilityLiveRegion="polite">
+              {busy
+                ? 'Updating listings…'
+                : `${state.total} ${state.total === 1 ? 'property' : 'properties'}`}
+            </Text>
+            <Text style={styles.subtitle}>Keep your listings up to date.</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a property"
+            onPress={() => router.push('/manage/new')}
+            style={({ pressed }) => [styles.add, pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="add" color="#FFFFFF" size={20} />
+            <Text style={styles.addText}>Add property</Text>
+          </Pressable>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filters}
+        >
+          {filters.map((item) => (
+            <Pressable
+              key={item.value}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.label} properties`}
+              accessibilityState={{ selected: status === item.value }}
+              onPress={() => setStatus(item.value)}
+              style={[styles.filter, status === item.value && styles.selected]}
+            >
+              <Text style={[styles.filterText, status === item.value && { color: '#FFFFFF' }]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
       <FlatList
         data={state.items}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
-        refreshing={state.status === 'refreshing'}
-        onRefresh={() => void feed.refresh()}
-        ListHeaderComponent={
-          <View style={styles.section}>
-            <Heading
-              title="My properties"
-              detail="Create a draft, add photos, then publish it to the community."
-            />
-            <Action label="Add a property" onPress={() => router.push('/manage/new')} />
-            <View style={styles.filters}>
-              {(['all', 'draft', 'active', 'sold', 'archived'] as const).map((value) => (
-                <View key={value} style={styles.filter}>
-                  <Action
-                    label={value === status ? `${value} · selected` : value}
-                    secondary={value !== status}
-                    onPress={() => setStatus(value)}
-                  />
-                </View>
-              ))}
-            </View>
-            <Notice>
-              {state.total} {status === 'all' ? '' : `${status} `}properties
-            </Notice>
-            {!!state.error && <Notice error>{state.error}</Notice>}
-          </View>
+        renderItem={({ item }) =>
+          item.owner.id === actor ? <OwnedPropertyCard listing={item} token={access.token} /> : null
         }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.status}>{item.status}</Text>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.text}>
-              {item.city}, {item.state}
-            </Text>
-            <Text style={styles.text}>
-              {item.currency} {formatDecimal(item.price)}
-            </Text>
-            <Action
-              label={`Edit ${item.title}`}
-              secondary
-              onPress={() => router.push({ pathname: '/manage/[id]', params: { id: item.id } })}
-            />
-          </View>
-        )}
+        ItemSeparatorComponent={() => <View style={{ height: 18 }} />}
+        refreshing={state.status === 'refreshing'}
+        onRefresh={() => void feed.refresh(true)}
+        alwaysBounceVertical
+        ListHeaderComponent={
+          state.status === 'error' ? (
+            <View style={styles.message}>
+              <Notice error>
+                {state.error}
+                {state.items.length ? ' Showing previously loaded properties.' : ''}
+              </Notice>
+              <Action
+                label="Retry loading properties"
+                secondary
+                onPress={() => void feed.refresh()}
+              />
+            </View>
+          ) : undefined
+        }
         ListEmptyComponent={
-          state.status === 'loading' ? (
-            <ActivityIndicator color={colors.green} accessibilityLabel="Loading your properties" />
-          ) : state.status !== 'error' ? (
-            <Notice>No properties in this category yet.</Notice>
+          state.status === 'ready' ? (
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="home-outline" size={34} color={colors.green} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {status === 'all' ? 'Your listings start here' : `No ${status} properties`}
+              </Text>
+              <Text style={styles.emptyDetail}>
+                {status === 'all'
+                  ? 'Create a draft, add your photos and publish when you are ready.'
+                  : 'Choose another status to see your other listings.'}
+              </Text>
+              {status === 'all' ? (
+                <Action
+                  label="Create your first property"
+                  onPress={() => router.push('/manage/new')}
+                />
+              ) : (
+                <Action label="Show all properties" secondary onPress={() => setStatus('all')} />
+              )}
+            </View>
           ) : undefined
         }
         ListFooterComponent={
-          <View style={styles.section}>
-            {state.status === 'error' && (
-              <Action label="Retry loading properties" onPress={() => void feed.refresh()} />
+          <View style={styles.footer}>
+            {state.status === 'loading' && (
+              <ActivityIndicator
+                color={colors.green}
+                accessibilityLabel="Loading your properties"
+              />
             )}
-            {state.hasMore && (
+            {state.status === 'ready' && !!state.error && <Notice error>{state.error}</Notice>}
+            {state.hasMore && state.status !== 'error' && (
               <Action
-                label="Load more"
+                label={state.error ? 'Retry loading more properties' : 'Load more properties'}
                 secondary
                 busy={state.status === 'loadingMore'}
+                disabled={busy}
                 onPress={() => void feed.more()}
               />
             )}
-            {state.capped && <Notice>Refresh or choose a status to narrow this list.</Notice>}
+            {state.capped && <Notice>Choose a status to narrow your property list.</Notice>}
           </View>
         }
       />
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 24, gap: 16, width: '100%', maxWidth: 560, alignSelf: 'center' },
-  section: { gap: 16 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  filter: { minWidth: '45%', flexGrow: 1 },
-  card: {
-    padding: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
+  header: { paddingTop: 12, paddingBottom: 16, paddingHorizontal: 20, gap: 18 },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
+    flexWrap: 'wrap',
   },
-  status: { color: colors.green, textTransform: 'capitalize', fontWeight: '700' },
-  title: { fontSize: 20, fontWeight: '700', color: colors.ink },
-  text: { color: colors.muted, fontSize: 16 },
+  heading: { gap: 7, flexGrow: 1 },
+  total: { color: colors.ink, fontSize: 23, fontWeight: '600' },
+  subtitle: { color: colors.muted, fontSize: 12 },
+  add: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: 15,
+    backgroundColor: colors.green,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  addText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
+  filters: { gap: 8 },
+  filter: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  selected: { backgroundColor: colors.green },
+  filterText: { color: colors.muted, fontSize: 13, fontWeight: '500' },
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+  },
+  message: { gap: 12, marginBottom: 18 },
+  empty: { alignItems: 'center', paddingVertical: 42, gap: 14 },
+  emptyIcon: {
+    height: 76,
+    width: 76,
+    borderRadius: 38,
+    backgroundColor: colors.pale,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: { color: colors.ink, fontSize: 21, fontWeight: '600', textAlign: 'center' },
+  emptyDetail: { color: colors.muted, fontSize: 14, lineHeight: 22, textAlign: 'center' },
+  footer: { paddingVertical: 20, gap: 12 },
 });
