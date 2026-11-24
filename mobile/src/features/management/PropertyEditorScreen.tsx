@@ -1,109 +1,159 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { router, usePreventRemove } from 'expo-router';
+import {
+  ComponentProps,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, Stack, usePreventRemove } from 'expo-router';
 import { listingsApi, managementApi, session } from '../../application/services';
 import { useSession } from '../../application/use-session';
-import { Action, Field, Heading, Notice, Screen } from '../../ui/components';
+import { Action, Field, Notice, Screen } from '../../ui/components';
+import { IconButton } from '../../ui/IconButton';
 import { colors } from '../../ui/theme';
 import { ListingPhoto } from '../listings/ListingPhoto';
 import { isListingId, ListingRecord } from '../listings/types';
-import { emptyProperty, propertyFields, propertyForm, validateProperty } from './form';
+import { emptyProperty, PropertyForm, propertyFields, propertyForm } from './form';
 import { choosePropertyPhoto } from './photos';
+import { PhotoQueue } from './photo-queue';
+import { saveProperty } from './save-property';
 import { LocationPicker } from '../maps/LocationPicker';
 
-export function PropertyEditorScreen({ id }: { id?: string }) {
+type Active = () => boolean;
+const placeholders: Record<keyof PropertyForm, string> = {
+  title: 'e.g. Roadside plot near Pune',
+  description: 'Describe access, surroundings and key features',
+  price: '2500000',
+  currency: 'INR',
+  area_sq_m: '1200',
+  address: 'Street, locality or landmark',
+  city: 'Pune',
+  state: 'Maharashtra',
+  country: 'IN',
+  latitude: '18.520400',
+  longitude: '73.856700',
+};
+
+export function PropertyEditorScreen({ id, actor }: { id?: string; actor: string }) {
   useSession();
-  const [record, setRecord] = useState<ListingRecord | null>(null);
-  const [form, setForm] = useState({ ...emptyProperty });
-  const [loading, setLoading] = useState(!!id);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [discard, setDiscard] = useState(false);
-  const [choosingLocation, setChoosingLocation] = useState(false);
-  const locked = useRef(false);
-  const mounted = useRef(true);
-  const generation = useRef(0);
-  const dirty =
+  const [record, setRecord] = useState<ListingRecord | null>(null),
+    [form, setForm] = useState({ ...emptyProperty });
+  const [photos] = useState(() => new PhotoQueue());
+  const pending = useSyncExternalStore(photos.subscribe, photos.getSnapshot);
+  const [loading, setLoading] = useState(!!id),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [notice, setNotice] = useState(''),
+    [progress, setProgress] = useState(''),
+    [discard, setDiscard] = useState(false),
+    [choosingLocation, setChoosingLocation] = useState(false),
+    [savedId, setSavedId] = useState(id);
+  const locked = useRef(false),
+    mounted = useRef(true),
+    generation = useRef(0);
+  const fieldDirty =
     JSON.stringify(form) !== JSON.stringify(record ? propertyForm(record) : emptyProperty);
+  const dirty = fieldDirty || pending.items.length > 0;
   const prevention = usePreventRemove(!discard && (busy || dirty), ({ repeat }) => {
     if (locked.current) {
       Alert.alert('Please wait', 'Wait for the current action to finish.');
       return;
     }
-    Alert.alert('Discard unsaved changes?', 'Your unsaved property details will be lost.', [
-      { text: 'Keep editing', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          setDiscard(true);
-          repeat();
+    Alert.alert(
+      'Discard unsaved changes?',
+      'Unsaved field edits and pending photo selections will be discarded. Saved photos are kept.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            setDiscard(true);
+            repeat();
+          },
         },
-      },
-    ]);
+      ],
+    );
   });
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      photos.dispose();
     };
-  }, []);
-
+  }, [photos]);
   const fetchSaved = useCallback(() => {
-    if (!id || locked.current) return;
-    const current = ++generation.current;
-    return managementApi.detail(id).then(
-      (listing) => {
-        if (!mounted.current || generation.current !== current) return;
-        setRecord(listing);
-        setForm(propertyForm(listing));
-        setLoading(false);
-      },
-      (failure: unknown) => {
-        if (!mounted.current || generation.current !== current) return;
-        setError(failure instanceof Error ? failure.message : 'Could not load this property.');
-        setLoading(false);
-      },
-    );
-  }, [id]);
-  function reload() {
-    if (locked.current) return;
+    const target = savedId;
+    if (!target || locked.current) return;
+    const request = ++generation.current;
     setLoading(true);
     setError('');
     setNotice('');
-    void fetchSaved();
-  }
+    managementApi.detail(target).then(
+      (value) => {
+        if (!mounted.current || generation.current !== request) return;
+        setRecord(value);
+        setForm(propertyForm(value));
+        photos.reconciled();
+        setLoading(false);
+      },
+      (failure: unknown) => {
+        if (!mounted.current || generation.current !== request) return;
+        setRecord(null);
+        setLoading(false);
+        setError(failure instanceof Error ? failure.message : 'Could not load this property.');
+      },
+    );
+  }, [photos, savedId]);
   useEffect(() => {
-    if (id && isListingId(id)) void fetchSaved();
+    if (id && isListingId(id)) fetchSaved();
   }, [id, fetchSaved]);
-
-  async function run(action: () => Promise<void>) {
+  async function run(action: (active: Active) => Promise<void>) {
     if (locked.current) return;
+    const access = session.access();
+    if (!access || access.user.id !== actor) return;
+    const active = () => mounted.current && session.access()?.token === access.token;
     locked.current = true;
+    generation.current++;
     setBusy(true);
     setError('');
     setNotice('');
+    setProgress('');
     try {
-      await action();
+      await action(active);
     } catch (failure) {
-      if (mounted.current)
+      if (active())
         setError(
           failure instanceof Error
             ? failure.message
-            : 'Could not complete this action. Please refresh.',
+            : 'Could not confirm this action. Refresh before repeating it.',
         );
     } finally {
       locked.current = false;
-      if (mounted.current) setBusy(false);
+      if (mounted.current) {
+        setBusy(false);
+        setProgress('');
+      }
     }
   }
-  const confirm = (
+  function confirm(
     title: string,
     message: string,
-    action: () => Promise<void>,
+    action: (active: Active) => Promise<void>,
     destructive = false,
-  ) => {
+  ) {
     if (locked.current) return;
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
@@ -113,259 +163,465 @@ export function PropertyEditorScreen({ id }: { id?: string }) {
         onPress: () => void run(action),
       },
     ]);
-  };
-  const save = async (publish = false) => {
-    validateProperty(form);
-    const saved = record
-      ? await managementApi.save(record.id, form, publish ? 'active' : undefined)
-      : await managementApi.create(form);
-    if (!mounted.current) return;
-    setRecord(saved);
-    setForm(propertyForm(saved));
-    setNotice(publish ? 'Property published to the community.' : 'Property details saved.');
+  }
+  async function save(active: Active, publish = false) {
+    Keyboard.dismiss();
+    const saved = await saveProperty({
+      form,
+      record,
+      publish,
+      photos,
+      api: managementApi,
+      active,
+      saved: (value) => {
+        setSavedId(value.id);
+        setRecord(value);
+        setForm(propertyForm(value));
+      },
+      progress: setProgress,
+    });
+    if (!saved || !active()) return;
+    setNotice(publish ? 'Property published with its saved photos.' : 'Property and photos saved.');
     if (!id) {
       setDiscard(true);
       prevention();
       router.replace({ pathname: '/manage/[id]', params: { id: saved.id } });
     }
-  };
-  const moveToDraft = async () => {
-    if (!record) return;
-    const saved = await managementApi.changeStatus(record.id, 'draft');
-    if (mounted.current) {
-      setRecord(saved);
-      setNotice('Property is now a private draft. Unsaved field edits remain in this form.');
-    }
-  };
-  const addPhoto = async () => {
-    if (!record) return;
+  }
+  async function addPhoto(active: Active) {
+    setProgress('Preparing selected photo…');
     const prepared = await choosePropertyPhoto();
     if (!prepared) return;
-    try {
-      const image = await managementApi.upload(record.id, prepared.body);
-      if (mounted.current) {
-        setRecord((current) =>
-          current ? { ...current, images: [...current.images, image] } : current,
-        );
-        setNotice('Photo uploaded.');
-      }
-    } finally {
+    if (!active()) {
       prepared.cleanup();
+      return;
     }
-  };
-  const token = session.access()?.token;
-  const disabled = busy || loading;
+    photos.add(prepared, record?.images.length ?? 0);
+    setNotice('Photo added to your selection. Save the property to upload it.');
+  }
+  function refresh() {
+    if (!savedId || locked.current) return;
+    if (fieldDirty)
+      Alert.alert(
+        'Replace field edits with saved details?',
+        'The latest saved details and photos will be loaded. Pending photo selections are kept.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Refresh', style: 'destructive', onPress: fetchSaved },
+        ],
+      );
+    else fetchSaved();
+  }
+  const access = session.access();
+  if (!access || access.user.id !== actor) return null;
   if (id && !isListingId(id))
     return (
       <Screen>
         <Notice error>Invalid property link.</Notice>
       </Screen>
     );
+  const disabled = busy || loading,
+    mutationDisabled = disabled || pending.blocked;
+  if (loading || (savedId && !record))
+    return (
+      <Screen>
+        {loading ? (
+          <ActivityIndicator color={colors.green} accessibilityLabel="Loading property" />
+        ) : (
+          <>
+            <Notice error>{error}</Notice>
+            <Action label="Retry saved property" onPress={fetchSaved} />
+          </>
+        )}
+      </Screen>
+    );
+  const photoCount = (record?.images.length ?? 0) + pending.items.length;
+  function field(key: keyof PropertyForm) {
+    const [, label, maxLength] = propertyFields.find(([name]) => name === key)!;
+    const code = key === 'currency' || key === 'country';
+    const numeric = ['price', 'area_sq_m', 'latitude', 'longitude'].includes(key);
+    return (
+      <Field
+        label={label}
+        value={form[key]}
+        placeholder={placeholders[key]}
+        editable={!disabled}
+        maxLength={maxLength}
+        multiline={key === 'description'}
+        autoCapitalize={code ? 'characters' : numeric ? 'none' : 'sentences'}
+        autoCorrect={!code && !numeric}
+        inputMode={key === 'price' || key === 'area_sq_m' ? 'decimal' : undefined}
+        onChangeText={(value) => {
+          setForm((current) => ({ ...current, [key]: value }));
+          setError('');
+          setNotice('');
+        }}
+      />
+    );
+  }
   return (
     <Screen>
-      <Heading
-        title={id ? 'Manage property' : 'Add a property'}
-        detail="Only active properties are public. Publishing makes property details, location and photos visible to the community."
-      />
-      {record && <Text style={styles.status}>Status: {record.status}</Text>}
-      {loading && <ActivityIndicator color={colors.green} accessibilityLabel="Loading property" />}
-      {!!error && <Notice error>{error}</Notice>}
-      {!!notice && <Notice>{notice}</Notice>}
-      {(!id || record) && (
-        <>
-          <Action
-            label="Choose location on map"
-            secondary
-            disabled={disabled}
-            onPress={() => setChoosingLocation(true)}
-          />
-          {choosingLocation && (
-            <LocationPicker
-              latitude={form.latitude}
-              longitude={form.longitude}
-              onCancel={() => setChoosingLocation(false)}
-              onConfirm={(point) => {
-                setForm((current) => ({ ...current, ...point }));
-                setChoosingLocation(false);
-              }}
-            />
-          )}
-          {propertyFields.map(([key, label, maxLength]) => (
-            <Field
-              key={key}
-              label={label}
-              value={form[key]}
-              editable={!disabled}
-              maxLength={maxLength}
-              multiline={key === 'description'}
-              autoCapitalize={key === 'currency' || key === 'country' ? 'characters' : 'sentences'}
-              autoCorrect={
-                !['price', 'area_sq_m', 'latitude', 'longitude', 'currency', 'country'].includes(
-                  key,
-                )
-              }
-              inputMode={key === 'price' || key === 'area_sq_m' ? 'decimal' : undefined}
-              onChangeText={(value) => setForm((current) => ({ ...current, [key]: value }))}
-            />
-          ))}
-          <Notice>
-            All fields are required. Coordinates use decimal degrees (up to 6 decimal places); use a
-            minus sign for south or west. Price and area allow 2 decimal places.
-          </Notice>
-          <Action
-            label={record ? 'Save changes' : 'Save private draft'}
-            busy={busy}
-            disabled={loading}
-            onPress={() => void run(() => save())}
-          />
-          {record && (
-            <>
-              <Action
-                label={record.status === 'active' ? 'Save and publish changes' : 'Publish property'}
-                secondary
-                disabled={disabled}
-                onPress={() =>
-                  confirm(
-                    'Publish property',
-                    'Your current form details and existing photos will be visible to everyone who browses LandConnect.',
-                    () => save(true),
-                  )
-                }
+      <Stack.Screen options={{ title: record ? 'Edit property' : 'Add property' }} />
+      <View style={styles.statusRow}>
+        <Text style={styles.status}>{record?.status ?? 'New draft'}</Text>
+        <Text style={styles.dirty}>
+          {dirty ? 'Unsaved changes' : record ? 'Saved' : 'Not saved yet'}
+        </Text>
+      </View>
+      <Text style={styles.intro}>
+        {record?.status === 'active'
+          ? 'This listing is live. Saving updates its public details and photos.'
+          : 'Add your details and photos. Save privately or publish when ready.'}
+      </Text>
+      <Section
+        icon="images-outline"
+        title="Property photos"
+        hint={`${photoCount} / 10 photos · First saved photo is the cover`}
+      >
+        <View style={styles.photoGrid}>
+          {record?.images.map((photo, index) => (
+            <View key={photo.id} style={styles.photoTile}>
+              <ListingPhoto
+                uri={listingsApi.photoUrl(photo.url)}
+                headers={{ Authorization: `Bearer ${access.token}` }}
+                label={`Saved property photo ${index + 1}`}
+                aspectRatio={1.2}
               />
-              {record.status !== 'draft' && (
-                <Action
-                  label={record.status === 'active' ? 'Unpublish to draft' : 'Move to draft'}
-                  secondary
-                  disabled={disabled}
+              <View style={styles.remove}>
+                <IconButton
+                  icon="trash-outline"
+                  label={`Remove saved photo ${index + 1}`}
+                  tone="danger"
+                  size={40}
+                  disabled={mutationDisabled}
                   onPress={() =>
                     confirm(
-                      'Move to draft',
-                      'This hides the property from the community. Unsaved field edits stay in this form.',
-                      moveToDraft,
-                    )
-                  }
-                />
-              )}
-              {record.status !== 'archived' && (
-                <Action
-                  label="Archive property"
-                  secondary
-                  disabled={disabled}
-                  onPress={() =>
-                    confirm(
-                      'Archive property',
-                      'This hides the property and keeps its details and photos. You can publish it again later. Unsaved field edits stay in this form.',
-                      async () => {
-                        await managementApi.archive(record.id);
-                        if (mounted.current) {
+                      'Remove photo',
+                      'This saved photo is removed immediately. Other unsaved field edits and pending photos stay in the form.',
+                      async (active) => {
+                        await managementApi.removePhoto(record.id, photo.id);
+                        if (active()) {
                           setRecord((current) =>
-                            current ? { ...current, status: 'archived' } : current,
+                            current
+                              ? {
+                                  ...current,
+                                  images: current.images.filter((image) => image.id !== photo.id),
+                                }
+                              : current,
                           );
-                          setNotice('Property archived.');
+                          setNotice('Saved photo removed.');
                         }
                       },
                       true,
                     )
                   }
                 />
-              )}
-              {record.status !== 'sold' && record.status !== 'archived' && (
-                <Action
-                  label="Mark as sold"
-                  secondary
+              </View>
+              <Text style={styles.photoLabel}>
+                {index === 0 ? 'Cover photo' : `Saved photo ${index + 1}`}
+              </Text>
+            </View>
+          ))}
+          {pending.items.map((photo, index) => (
+            <View key={photo.uri} style={styles.photoTile}>
+              <ListingPhoto
+                uri={photo.uri}
+                label={`Pending property photo ${index + 1}`}
+                aspectRatio={1.2}
+              />
+              <View style={styles.remove}>
+                <IconButton
+                  icon="close"
+                  label={`Remove pending photo ${index + 1}`}
+                  tone="dark"
+                  size={40}
                   disabled={disabled}
-                  onPress={() =>
-                    confirm(
-                      'Mark as sold',
-                      'This removes the property from the community. Its details and photos are kept. Unsaved field edits stay in this form.',
-                      async () => {
-                        const saved = await managementApi.changeStatus(record.id, 'sold');
-                        if (mounted.current) {
-                          setRecord(saved);
-                          setNotice('Property marked as sold.');
-                        }
-                      },
-                    )
-                  }
+                  onPress={() => photos.remove(photo.uri)}
                 />
-              )}
-              <Heading
-                title="Property photos"
-                detail={`${record.images.length} of 10 photos. Choose a still image; it will be resized and uploaded as JPEG. Photo changes are saved immediately, independently of the form.`}
-              />
-              {record.status === 'active' && (
-                <Notice>Photo changes to this published property become public immediately.</Notice>
-              )}
-              {record.images.map((photo, index) => (
-                <View key={photo.id} style={styles.photo}>
-                  {token && (
-                    <ListingPhoto
-                      uri={listingsApi.photoUrl(photo.url)}
-                      headers={{ Authorization: `Bearer ${token}` }}
-                      label={`Property photo ${index + 1}`}
-                    />
-                  )}
-                  <Action
-                    label={`Remove photo ${index + 1}`}
-                    secondary
-                    disabled={disabled}
-                    onPress={() =>
-                      confirm(
-                        'Remove photo',
-                        'This permanently removes this photo. Your property details are kept.',
-                        async () => {
-                          await managementApi.removePhoto(record.id, photo.id);
-                          if (mounted.current) {
-                            setRecord((current) =>
-                              current
-                                ? {
-                                    ...current,
-                                    images: current.images.filter((image) => image.id !== photo.id),
-                                  }
-                                : current,
-                            );
-                            setNotice('Photo removed.');
-                          }
-                        },
-                        true,
-                      )
-                    }
-                  />
-                </View>
-              ))}
-              <Action
-                label="Choose and upload a photo"
-                secondary
-                disabled={disabled || record.images.length >= 10}
-                onPress={() => void run(addPhoto)}
-              />
-            </>
-          )}
-        </>
-      )}
-      {id && (
-        <Action
-          label="Refresh saved property"
-          secondary
+              </View>
+              <Text style={styles.pendingLabel}>Pending save</Text>
+            </View>
+          ))}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add a property photo"
+          accessibilityState={{ disabled: mutationDisabled || photoCount >= 10 }}
+          disabled={mutationDisabled || photoCount >= 10}
+          onPress={() => void run(addPhoto)}
+          style={[styles.addPhoto, (mutationDisabled || photoCount >= 10) && { opacity: 0.5 }]}
+        >
+          <Ionicons name="add-circle-outline" size={27} color={colors.green} />
+          <Text style={styles.addPhotoText}>
+            {photoCount >= 10 ? 'Photo limit reached' : 'Add photo'}
+          </Text>
+        </Pressable>
+        <Text style={styles.hint}>
+          Select one photo at a time. New photos upload when you save. Saved-photo removal is
+          immediate.
+        </Text>
+        {pending.blocked && (
+          <>
+            <Notice error>
+              Refresh saved photos to check the last upload before adding it again.
+            </Notice>
+            <Action label="Refresh saved photos" secondary disabled={disabled} onPress={refresh} />
+          </>
+        )}
+      </Section>
+      <Section icon="document-text-outline" title="Property details">
+        {field('title')}
+        {field('description')}
+      </Section>
+      <Section
+        icon="pricetag-outline"
+        title="Price and area"
+        hint="Price and area support up to 2 decimal places."
+      >
+        <View style={styles.fieldsRow}>
+          <View style={styles.half}>{field('price')}</View>
+          <View style={styles.half}>{field('area_sq_m')}</View>
+        </View>
+        {field('currency')}
+      </Section>
+      <Section
+        icon="location-outline"
+        title="Location"
+        hint="Choose a point on the map or enter decimal coordinates. Address fields are filled separately."
+      >
+        <PropertyAction
+          icon="map-outline"
+          label="Choose location on map"
           disabled={disabled}
-          onPress={() => {
-            if (dirty)
-              Alert.alert(
-                'Discard field edits and refresh?',
-                'The latest saved property will replace this form.',
-                [
-                  { text: 'Keep editing', style: 'cancel' },
-                  { text: 'Refresh', style: 'destructive', onPress: () => void reload() },
-                ],
-              );
-            else void reload();
+          onPress={() => setChoosingLocation(true)}
+        />
+        {field('address')}
+        <View style={styles.fieldsRow}>
+          <View style={styles.half}>{field('city')}</View>
+          <View style={styles.half}>{field('state')}</View>
+        </View>
+        {field('country')}
+        <View style={styles.fieldsRow}>
+          <View style={styles.half}>{field('latitude')}</View>
+          <View style={styles.half}>{field('longitude')}</View>
+        </View>
+        <Text style={styles.hint}>
+          Coordinates allow up to 6 decimals. Use a minus sign for south or west. All fields are
+          required.
+        </Text>
+      </Section>
+      {choosingLocation && (
+        <LocationPicker
+          latitude={form.latitude}
+          longitude={form.longitude}
+          onCancel={() => setChoosingLocation(false)}
+          onConfirm={(point) => {
+            setForm((current) => ({ ...current, ...point }));
+            setChoosingLocation(false);
           }}
         />
+      )}
+      {!!error && <Notice error>{error}</Notice>}
+      {!!notice && <Notice>{notice}</Notice>}
+      {!!progress && <Notice>{progress}</Notice>}
+      <Action
+        label={record ? 'Save changes and photos' : 'Save private draft'}
+        busy={busy}
+        disabled={loading || pending.blocked}
+        onPress={() => void run((active) => save(active))}
+      />
+      {record?.status !== 'active' && (
+        <Action
+          label="Publish property"
+          secondary
+          disabled={mutationDisabled}
+          onPress={() =>
+            confirm(
+              'Publish property',
+              'Your current details, location and selected photos will be public after saving and uploading finish successfully.',
+              (active) => save(active, true),
+            )
+          }
+        />
+      )}
+      {record && (
+        <Section
+          icon="settings-outline"
+          title="Listing status"
+          hint="Status changes keep unsaved field edits and pending photos in this form."
+        >
+          {record.status !== 'draft' && (
+            <PropertyAction
+              icon="eye-off-outline"
+              label={record.status === 'active' ? 'Unpublish to draft' : 'Move to draft'}
+              disabled={mutationDisabled}
+              onPress={() =>
+                confirm(
+                  'Move to draft',
+                  'This hides the property from public listings.',
+                  async (active) => {
+                    const saved = await managementApi.changeStatus(record.id, 'draft');
+                    if (active()) {
+                      setRecord(saved);
+                      setNotice('Property is now a private draft.');
+                    }
+                  },
+                )
+              }
+            />
+          )}
+          {record.status !== 'sold' && record.status !== 'archived' && (
+            <PropertyAction
+              icon="checkmark-circle-outline"
+              label="Mark as sold"
+              disabled={mutationDisabled}
+              onPress={() =>
+                confirm(
+                  'Mark as sold',
+                  'This hides the property from public listings and keeps its saved details and photos.',
+                  async (active) => {
+                    const saved = await managementApi.changeStatus(record.id, 'sold');
+                    if (active()) {
+                      setRecord(saved);
+                      setNotice('Property marked as sold.');
+                    }
+                  },
+                )
+              }
+            />
+          )}
+          {record.status !== 'archived' && (
+            <PropertyAction
+              icon="archive-outline"
+              label="Archive property"
+              danger
+              disabled={mutationDisabled}
+              onPress={() =>
+                confirm(
+                  'Archive property',
+                  'This hides the property and keeps its saved details and photos. You can publish it again later.',
+                  async (active) => {
+                    await managementApi.archive(record.id);
+                    if (active()) {
+                      setRecord((current) =>
+                        current ? { ...current, status: 'archived' } : current,
+                      );
+                      setNotice('Property archived.');
+                    }
+                  },
+                  true,
+                )
+              }
+            />
+          )}
+          <PropertyAction
+            icon="refresh-outline"
+            label="Refresh saved property"
+            disabled={disabled}
+            onPress={refresh}
+          />
+        </Section>
       )}
     </Screen>
   );
 }
+
+function Section({
+  icon,
+  title,
+  hint,
+  children,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.sectionTitle}>
+        <Ionicons name={icon} size={22} color={colors.green} />
+        <Text style={styles.sectionText} accessibilityRole="header">
+          {title}
+        </Text>
+      </View>
+      {!!hint && <Text style={styles.hint}>{hint}</Text>}
+      {children}
+    </View>
+  );
+}
+function PropertyAction({
+  icon,
+  label,
+  disabled,
+  onPress,
+  danger = false,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  disabled: boolean;
+  onPress: () => void;
+  danger?: boolean;
+}) {
+  const tint = danger ? colors.error : colors.green;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.action, { opacity: disabled ? 0.45 : pressed ? 0.65 : 1 }]}
+    >
+      <Ionicons name={icon} color={tint} size={21} />
+      <Text style={[styles.actionText, { color: tint }]}>{label}</Text>
+      <Ionicons name="chevron-forward" color={colors.muted} size={17} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  status: { color: colors.green, fontSize: 16, fontWeight: '700', textTransform: 'capitalize' },
-  photo: { gap: 12 },
+  card: { borderRadius: 22, padding: 18, gap: 16, backgroundColor: colors.surface },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  status: {
+    color: colors.green,
+    backgroundColor: colors.pale,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    textTransform: 'capitalize',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dirty: { color: colors.muted, fontSize: 12 },
+  intro: { color: colors.muted, fontSize: 13, lineHeight: 21 },
+  sectionTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionText: { color: colors.ink, fontSize: 18, fontWeight: '600' },
+  hint: { color: colors.muted, fontSize: 12, lineHeight: 19 },
+  fieldsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  half: { flexGrow: 1, flexBasis: 140 },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  photoTile: { flexGrow: 1, flexBasis: 130, maxWidth: '100%', gap: 7 },
+  remove: { position: 'absolute', top: 5, right: 5 },
+  photoLabel: { color: colors.muted, fontSize: 11 },
+  pendingLabel: { color: '#8A5B13', fontSize: 11, fontWeight: '500' },
+  addPhoto: {
+    minHeight: 86,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.green,
+    backgroundColor: colors.pale,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  addPhotoText: { color: colors.green, fontSize: 14, fontWeight: '600' },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52 },
+  actionText: { flex: 1, fontSize: 14, fontWeight: '500' },
 });

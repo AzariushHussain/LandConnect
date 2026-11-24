@@ -51,13 +51,8 @@ async function preparePhoto() {
     generated = photo.uri;
     validatePreparedPhoto(new File(photo.uri).size, photo.width, photo.height);
     const body = new FormData();
-    // React Native's native FormData accepts a URI descriptor; its DOM typing only lists Blob.
-    body.append('file', {
-      uri: photo.uri,
-      name: 'property.jpg',
-      type: 'image/jpeg',
-    } as unknown as Blob);
-    return { body, cleanup };
+    body.append('file', new File(photo.uri));
+    return { uri: photo.uri, body, cleanup };
   } catch {
     cleanup();
     throw new Error(

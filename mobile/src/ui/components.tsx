@@ -91,7 +91,7 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
         {...props}
         accessibilityLabel={label}
         placeholderTextColor={colors.muted}
-        style={styles.input}
+        style={[styles.input, props.multiline && { minHeight: 120, textAlignVertical: 'top' }]}
       />
     </View>
   );
