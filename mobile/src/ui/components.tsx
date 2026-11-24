@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,9 +18,13 @@ import { colors } from './theme';
 export function Screen({
   children,
   bottomInset = true,
+  refreshing = false,
+  onRefresh,
 }: {
   children: ReactNode;
   bottomInset?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   return (
     <SafeAreaView
@@ -34,6 +39,17 @@ export function Screen({
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          alwaysBounceVertical
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.green}
+                colors={[colors.green]}
+              />
+            ) : undefined
+          }
         >
           {children}
         </ScrollView>

@@ -4,7 +4,7 @@ React Native/TypeScript Android application using Expo development builds and Ex
 
 ## Run on your Android phone
 
-Signed-in navigation uses four bottom tabs: **Listings, Chats, Map and My Account**. Details, conversation threads, forms, privacy and media controls open above these tabs. Read [mobile step 9](../docs/22-mobile-navigation.md) for route structure, safe-area handling and verification. After updating the route files, reload the development app if Metro keeps an old navigation state.
+Signed-in navigation uses four bottom tabs: **Listings, Chats, Calls and My Account**. Details, property maps, conversation threads, forms, privacy and media controls open above these tabs. Read [mobile step 18](../docs/31-mobile-history-property-maps.md) for the Calls tab and property-only public map navigation. After updating route files, reload the development app if Metro keeps an old navigation state.
 
 Start the backend from the repository root:
 
@@ -71,6 +71,10 @@ uv run --project backend python scripts/check_mobile_listings.py
 ```
 
 ## Current verification
+
+Step 18 passes 203 mobile tests, 46 selected backend unit tests and 6 PostgreSQL checks. The Calls tab replaces Map and includes private direct/group-call history, incoming missed-call filtering, callbacks and older pages. Maps open from property details; the old scrolling map screen and Listings map shortcut are removed. MapLibre uses surface rendering and explicit camera changes with native pan/zoom handling. The local API is rebuilt and healthy; authenticated history returns direct/group rows. No migration or native dependency changed. See [the detailed explanation](../docs/31-mobile-history-property-maps.md). Physical gesture/frame-rate checks remain pending.
+
+Step 17 passes 195 mobile tests, typecheck, lint, formatting and Android development export. Listings has explicit keyword search, a separate filter panel, removable filter chips and redesigned cards. Details has responsive photos and grouped overview/location/owner cards with pull-to-refresh. The existing feed pull-to-refresh also handles empty results with a controlled spinner. See [the implementation explanation](../docs/30-mobile-listing-design.md). No backend, schema or native dependency changed. Physical gesture/layout checks remain deferred.
 
 Step 16 passes 192 mobile tests, typecheck, lint, formatting and Android development bundle export. Tap a group chat's header or Group information in its options to open the redesigned group screen. Tap a participant for messaging/calling and permitted membership actions. Block buttons were removed from all three entry points and the unused component was deleted; existing blocked accounts remain manageable in Privacy settings. See [the detailed explanation and role checklist](../docs/29-mobile-group-info.md). No backend migration or native dependency changed. Physical visual/action checks remain deferred.
 

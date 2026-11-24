@@ -11,6 +11,26 @@ export const emptyFilters = {
 };
 export type ListingFilters = typeof emptyFilters;
 
+export const filterFields = [
+  ['city', 'City'],
+  ['state', 'State'],
+  ['country', 'Country code'],
+  ['currency', 'Currency code'],
+  ['min_price', 'Minimum price'],
+  ['max_price', 'Maximum price'],
+  ['min_area', 'Minimum area (m²)'],
+  ['max_area', 'Maximum area (m²)'],
+] as const;
+
+export function withoutFilter(filters: ListingFilters, key: keyof ListingFilters): ListingFilters {
+  const next = { ...filters, [key]: '' };
+  if (key === 'currency') {
+    next.min_price = '';
+    next.max_price = '';
+  }
+  return normalizeFilters(next);
+}
+
 function decimal(value: string) {
   return /^\d{1,12}(?:\.\d{1,2})?$/.test(value);
 }

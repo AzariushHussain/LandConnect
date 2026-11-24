@@ -5,6 +5,27 @@ import { emptyFilters } from '../src/features/listings/filters';
 import { ListingPage } from '../src/features/listings/types';
 import { deferred, listing, page } from './fixtures/listings';
 
+test('pull-to-refresh shows a controlled spinner on empty results and retains applied filters', async () => {
+  const pending = deferred<ListingPage>();
+  let calls = 0;
+  const applied = { ...emptyFilters, city: 'Pune', currency: 'INR', min_price: '999999999999.99' };
+  const feed = new ListingFeed({
+    page: async (filters, offset) => {
+      assert.deepEqual(filters, applied);
+      assert.equal(offset, 0);
+      return ++calls === 1 ? page([], 0) : pending.promise;
+    },
+  });
+  await feed.apply(applied);
+  const refresh = feed.refresh(true);
+  assert.equal(feed.getSnapshot().status, 'refreshing');
+  assert.deepEqual(feed.getSnapshot().filters, applied);
+  pending.resolve(page([listing(2)], 1));
+  await refresh;
+  assert.equal(feed.getSnapshot().status, 'ready');
+  assert.equal(feed.getSnapshot().items[0]!.id, listing(2).id);
+});
+
 test('first page, load-more and overlapping IDs advance by raw server rows', async () => {
   const offsets: number[] = [];
   const feed = new ListingFeed({

@@ -61,10 +61,10 @@ export class ListingFeed<T extends ListingRecord = Listing> {
     await this.load(false);
   }
 
-  async refresh() {
+  async refresh(fromPull = false) {
     this.update({
       ...this.state,
-      status: this.state.items.length ? 'refreshing' : 'loading',
+      status: fromPull || this.state.items.length ? 'refreshing' : 'loading',
       error: '',
     });
     await this.load(false);

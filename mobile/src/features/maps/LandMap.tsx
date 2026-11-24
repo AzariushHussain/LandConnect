@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
+import { Camera, CameraRef, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
 import { Action, Notice } from '../../ui/components';
 import { colors } from '../../ui/theme';
 import { validateMapStyle } from '../../config/map-style';
@@ -10,6 +10,7 @@ import { Bounds, cameraCenter, LngLat, nativeBounds } from './geo';
 type Props = {
   center: LngLat;
   zoom: number;
+  recenter?: number;
   features?: MapPoint[];
   selected?: string;
   pin?: LngLat | null;
@@ -39,6 +40,7 @@ export function LandMap(props: Props) {
 function MapSurface({
   center,
   zoom,
+  recenter = 0,
   features = [],
   selected,
   pin,
@@ -50,8 +52,13 @@ function MapSurface({
 }: Props & { mapStyle: string; retry: () => void }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [areaError, setAreaError] = useState('');
-  const target = useMemo(() => cameraCenter(center), [center]);
-  const initialView = useMemo(() => ({ center: target, zoom }), [target, zoom]);
+  const [longitude, latitude] = center;
+  const target = useMemo(() => cameraCenter([longitude, latitude]), [longitude, latitude]);
+  const [initialView] = useState(() => ({ center: target, zoom }));
+  const camera = useRef<CameraRef>(null);
+  useEffect(() => {
+    if (status === 'ready') camera.current?.easeTo({ center: target, zoom, duration: 350 });
+  }, [status, target, zoom, recenter]);
   const data = useMemo(() => ({ type: 'FeatureCollection' as const, features }), [features]);
   useEffect(() => {
     if (status !== 'loading') return;
@@ -62,7 +69,8 @@ function MapSurface({
     <View style={styles.container}>
       <Map
         mapStyle={mapStyle}
-        androidView="texture"
+        androidView="surface"
+        preferredFramesPerSecond={60}
         attribution
         compass
         touchRotate={false}
@@ -80,13 +88,7 @@ function MapSurface({
         }}
         onPress={(event) => onPick?.(event.nativeEvent.lngLat)}
       >
-        <Camera
-          initialViewState={initialView}
-          center={target}
-          zoom={zoom}
-          maxZoom={20}
-          duration={250}
-        />
+        <Camera ref={camera} initialViewState={initialView} maxZoom={20} />
         <GeoJSONSource
           id="properties"
           data={data}

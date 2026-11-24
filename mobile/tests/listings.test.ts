@@ -7,6 +7,7 @@ import {
   formatDecimal,
   listingQuery,
   normalizeFilters,
+  withoutFilter,
 } from '../src/features/listings/filters';
 import { isListingId, parseListing, parsePage } from '../src/features/listings/types';
 import { listing, listingId, page } from './fixtures/listings';
@@ -52,6 +53,36 @@ test('filter bounds are validated exactly rather than using rounded numeric conv
       .min_price,
     '0',
   );
+});
+
+test('removing a currency chip clears its dependent budget without mutating applied filters', () => {
+  const applied = {
+    ...emptyFilters,
+    q: 'farm',
+    city: 'Pune',
+    currency: 'INR',
+    min_price: '1000.01',
+    max_price: '999999999999.99',
+  };
+  assert.deepEqual(withoutFilter(applied, 'currency'), {
+    ...emptyFilters,
+    q: 'farm',
+    city: 'Pune',
+  });
+  assert.equal(applied.max_price, '999999999999.99');
+});
+
+test('removing a single bound retains the exact remaining budget, location and search', () => {
+  const applied = {
+    ...emptyFilters,
+    q: 'field',
+    city: 'Pune',
+    currency: 'INR',
+    min_price: '999999999999.98',
+    max_price: '999999999999.99',
+  };
+  assert.deepEqual(withoutFilter(applied, 'min_price'), { ...applied, min_price: '' });
+  assert.deepEqual(withoutFilter(applied, 'city'), { ...applied, city: '' });
 });
 
 test('invalid numeric, country, currency and oversized filters are refused', () => {

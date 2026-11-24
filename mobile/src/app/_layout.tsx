@@ -157,6 +157,7 @@ export default function RootLayout() {
                 <Stack.Screen name="privacy/index" options={{ title: 'Privacy settings' }} />
                 <Stack.Screen name="privacy/blocked" options={{ title: 'Blocked accounts' }} />
                 <Stack.Screen name="listings/[id]" options={{ title: 'Property details' }} />
+                <Stack.Screen name="property-map/[id]" options={{ title: 'Property location' }} />
                 <Stack.Screen name="chats/new-group" options={{ title: 'New group' }} />
                 <Stack.Screen name="chats/[id]/index" options={{ headerShown: false }} />
                 <Stack.Screen name="chats/[id]/info" options={{ title: 'Group information' }} />

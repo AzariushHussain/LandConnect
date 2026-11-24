@@ -2,6 +2,7 @@ import { ApiClient, ApiError, RequestOptions } from '../../api/client';
 import { mediaToken } from '../media/token';
 import type { ChatSession } from '../chat/api';
 import { person, Person, row, uuid } from '../chat/types';
+import type { HistoryItem, HistoryPage } from './history';
 
 export type CallKind = 'audio' | 'video';
 export const statuses = [
@@ -60,6 +61,68 @@ export function callDto(value: unknown, actor: string): Call {
 export function roomToken(value: unknown, id: string, development: boolean) {
   return mediaToken(value, `call-${id}`, development);
 }
+export function historyPage(value: unknown, actor: string, offset: number): HistoryPage {
+  const page = row(value);
+  if (
+    !Array.isArray(page.items) ||
+    page.items.length > 20 ||
+    page.limit !== 20 ||
+    page.offset !== offset ||
+    typeof page.has_more !== 'boolean' ||
+    (page.has_more && page.items.length !== 20)
+  )
+    throw new Error('Could not verify call history.');
+  const items = page.items.map((value): HistoryItem => {
+    const item = row(value);
+    if (
+      typeof item.id !== 'string' ||
+      !uuid(item.id) ||
+      !['direct', 'group'].includes(String(item.source)) ||
+      typeof item.title !== 'string' ||
+      !item.title.trim() ||
+      item.title.length > 150 ||
+      !['audio', 'video'].includes(String(item.kind)) ||
+      !['incoming', 'outgoing'].includes(String(item.direction)) ||
+      typeof item.created_at !== 'string' ||
+      !Number.isFinite(Date.parse(item.created_at))
+    )
+      throw new Error('Invalid call history entry.');
+    const peer = item.source === 'direct' ? person(item.peer) : null;
+    if (
+      item.source === 'direct'
+        ? !statuses.includes(item.status as CallStatus) ||
+          item.conversation_id !== null ||
+          peer!.id === actor ||
+          peer!.display_name !== item.title
+        : !['open', 'ended'].includes(String(item.status)) ||
+          typeof item.conversation_id !== 'string' ||
+          !uuid(item.conversation_id) ||
+          item.peer !== null
+    )
+      throw new Error('Invalid call history access.');
+    return {
+      id: item.id,
+      source: item.source as HistoryItem['source'],
+      title: item.title,
+      kind: item.kind as CallKind,
+      status: item.status as HistoryItem['status'],
+      direction: item.direction as HistoryItem['direction'],
+      created_at: item.created_at,
+      conversation_id: item.conversation_id as string | null,
+      peer,
+    };
+  });
+  if (
+    new Set(items.map((item) => `${item.source}:${item.id}`)).size !== items.length ||
+    items.some(
+      (item, index) =>
+        index > 0 && Date.parse(item.created_at) > Date.parse(items[index - 1]!.created_at),
+    )
+  )
+    throw new Error('Invalid call history order.');
+  return { items, hasMore: page.has_more };
+}
+
 export type CallAttempt = { client_id: string; callee_id: string; kind: CallKind };
 export class CallsApi {
   constructor(
@@ -109,6 +172,23 @@ export class CallsApi {
     )
       throw new Error('Could not verify active calls.');
     return calls;
+  }
+  async history(offset = 0, missed = false) {
+    if (!Number.isInteger(offset) || offset < 0 || offset > 10000 || typeof missed !== 'boolean')
+      throw new Error('Invalid call history page.');
+    const { value, actor } = await this.request(
+      `/calls/history?limit=20&offset=${offset}&missed_only=${missed}`,
+    );
+    const page = historyPage(value, actor, offset);
+    if (
+      missed &&
+      page.items.some(
+        (item) =>
+          item.source !== 'direct' || item.direction !== 'incoming' || item.status !== 'missed',
+      )
+    )
+      throw new Error('Invalid missed call history.');
+    return page;
   }
   async detail(id: string) {
     const { value, actor } = await this.request(`/calls/${this.id(id)}`);

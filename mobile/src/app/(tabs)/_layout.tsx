@@ -7,7 +7,7 @@ import { colors } from '../../ui/theme';
 const icons = {
   index: ['grid-outline', 'grid'],
   chats: ['chatbubbles-outline', 'chatbubbles'],
-  map: ['map-outline', 'map'],
+  'call-history': ['call-outline', 'call'],
   account: ['person-circle-outline', 'person-circle'],
 } as const;
 
@@ -56,7 +56,10 @@ export default function MainTabs() {
         name="chats"
         options={{ title: 'Chats', headerShown: false, tabBarAccessibilityLabel: 'Chats tab' }}
       />
-      <Tabs.Screen name="map" options={{ title: 'Map', tabBarAccessibilityLabel: 'Map tab' }} />
+      <Tabs.Screen
+        name="call-history"
+        options={{ title: 'Calls', tabBarAccessibilityLabel: 'Calls tab' }}
+      />
       <Tabs.Screen
         name="account"
         options={{ title: 'My Account', tabBarAccessibilityLabel: 'My Account tab' }}
