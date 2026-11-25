@@ -2,6 +2,14 @@
 
 A land marketplace Android prototype for buyers, sellers and brokers, with property discovery, messaging and in-app audio/video calls.
 
+## Demo video
+
+<a href="https://drive.google.com/file/d/1ZW52ZnvHR1MGi1IGHrh-ltcLz8KpOJiE/view?usp=sharing">
+  <img src="docs/demo-video-preview.jpg" alt="Watch the LandConnect demonstration video" width="240" />
+</a>
+
+[Watch the full demo on Google Drive](https://drive.google.com/file/d/1ZW52ZnvHR1MGi1IGHrh-ltcLz8KpOJiE/view?usp=sharing).
+
 ## Features
 
 - Registration, login and Buyer/Seller/Broker permissions.
