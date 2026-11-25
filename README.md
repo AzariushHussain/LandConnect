@@ -17,7 +17,7 @@ A land marketplace Android prototype for buyers, sellers and brokers, with prope
 - Seller/broker listing creation, editing, publishing and image uploads.
 - Property maps, place search and address prefill from a selected point.
 - Direct/group messaging, participant management and call history.
-- Direct/group audio and video calls, plus invite-only meeting rooms.
+- Direct/group audio and video calls.
 - Contact blocking/unblocking and communication preferences.
 
 ## Technical overview
@@ -138,7 +138,5 @@ scripts/          Setup, demo data and connectivity helpers
 ## Prototype notes
 
 Calling currently requires the app to remain foregrounded. Formal meeting rooms and advanced privacy settings exist as routes, but their main-menu shortcuts are hidden. Direct-chat blocking and My Account > Blocked contacts are available in the normal UI.
-
-ChatGPT/Codex assisted with planning, implementation, debugging and documentation.
 
 To stop the backend while preserving database/upload volumes, run `docker compose down` from the repository root.
