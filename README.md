@@ -71,7 +71,26 @@ $env:EXPO_PUBLIC_API_URL = "http://192.168.29.22:8000"
 npm run android -- --device
 ```
 
-This builds/installs the development client and starts Metro. For later JavaScript-only development, use `npm start` from `mobile/` with the same API setting. Expo Go is not supported because calling uses native WebRTC modules.
+This builds/installs the development client and starts Metro. Expo Go is not supported because calling uses native WebRTC modules.
+
+**Start the installed app for later development - new terminal, from the repository root:**
+
+```powershell
+cd mobile
+$env:EXPO_PUBLIC_API_URL = "http://192.168.29.22:8000"
+npm start
+```
+
+Open the installed LandConnect development client and connect to Metro using its QR code or server URL. JavaScript changes reload without rebuilding the APK.
+
+**Build an ARM64 development APK without a connected device - from `mobile/`:**
+
+```powershell
+$env:EXPO_PUBLIC_API_URL = "http://192.168.29.22:8000"
+$env:NODE_ENV = "development"
+npm run prebuild:android
+.\android\gradlew.bat -p android :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --max-workers=2 --console=plain
+```
 
 The development APK is generated at `mobile/android/app/build/outputs/apk/debug/app-debug.apk`. It requires Metro and the backend. Keep local secrets in the root `.env`; never put backend secrets in mobile configuration.
 
