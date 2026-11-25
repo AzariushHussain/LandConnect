@@ -32,9 +32,17 @@ A land marketplace Android prototype for buyers, sellers and brokers, with prope
 | Maps            | MapLibre, OpenFreeMap, Photon geocoding             |
 | Backend runtime | Docker Compose, Python dependencies managed with uv |
 
-FastAPI enforces roles, ownership, conversation membership and privacy rules. PostgreSQL stores application data and message history. A transactional outbox publishes change notifications through Redis; WebSockets deliver them to authorized clients, and reconnects recover history from PostgreSQL.
+FastAPI enforces roles, ownership, conversation membership and privacy rules.
 
-For calls, FastAPI manages invitations, call state and short-lived room tokens. LiveKit handles WebRTC signaling and audio/video transport. Both direct and group calls use the SFU architecture.
+## Calling architecture
+
+The agreed media architecture is **WebRTC through a self-hosted LiveKit SFU**, for both one-to-one calls and invite-only group meeting rooms. Mobile clients publish audio/video tracks to the SFU, which forwards them to the other participants. FastAPI owns authentication, invitations, membership checks, call state and short-lived room access tokens. LiveKit owns media transport and its WebRTC signaling.
+
+The `livekit-api` dependency supplies server-side room management and token generation. **LiveKit Server v1.13.11 runs in Compose**, with the same credentials as the backend and local TURN/UDP support. No Agents framework, AI models or LiveKit Cloud subscription are involved. One-to-one calling now includes lifecycle APIs, scoped room tokens, Redis notifications, timeout handling and durable media cleanup. See the [calling guide](docs/10-calling.md), [setup walkthrough](docs/09-livekit-setup.md) and earlier [SFU architecture decision](docs/04-sfu-architecture.md). Physical-device media testing remains part of client integration.
+
+## Chat architecture
+
+Direct and group chat use **PostgreSQL message history and a transactional outbox, Redis Pub/Sub fan-out, and authenticated WebSockets**. Redis carries small change notifications; it is not the message store. Each API instance forwards broker events to its own connected clients after authorization checks. Reconnects recover messages from paginated PostgreSQL history. See the [chat architecture decision](docs/07-chat-architecture.md) and [implementation guide](docs/08-messaging.md).
 
 ## Run locally
 
