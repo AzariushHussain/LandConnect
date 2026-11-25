@@ -326,6 +326,14 @@ def block_user(db: Session, actor: uuid.UUID, target: uuid.UUID) -> None:
         db.commit()
 
 
+def block_status(db: Session, actor: uuid.UUID, target: uuid.UUID) -> bool:
+    if actor == target:
+        raise InvalidRequest("Choose another account")
+    if db.get(User, target) is None:
+        raise NotFound("User not found")
+    return db.get(Block, (actor, target)) is not None
+
+
 def unblock_user(db: Session, actor: uuid.UUID, target: uuid.UUID) -> None:
     lock_users(db, {actor})
     block = db.get(Block, (actor, target))

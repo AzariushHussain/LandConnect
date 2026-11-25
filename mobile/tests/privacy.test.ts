@@ -152,6 +152,21 @@ test('block PUT and unblock DELETE accept empty 204 without JSON bodies', async 
   assert.equal(new Headers(calls[0]!.headers).get('Authorization'), 'Bearer token');
 });
 
+test('targeted block status authenticates and validates the peer and boolean without leaking profile data', async () => {
+  let value: unknown = { user_id: other, blocked: true, private: 'discard' };
+  const f = fixture(async (url, init) => {
+    assert.equal(String(url), `https://api.example.com/users/me/blocks/${other}`);
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer token');
+    return json(value);
+  });
+  assert.equal(await f.api.blocked(other), true);
+  value = { user_id: actor, blocked: true };
+  await assert.rejects(f.api.blocked(other), /block status/);
+  value = { user_id: other, blocked: 'true' };
+  await assert.rejects(f.api.blocked(other), /block status/);
+  await assert.rejects(f.api.blocked(actor), /another account/);
+});
+
 test('settings controller sends only changed flags and suppresses repeated save taps', async () => {
   const response = deferred<Preferences>();
   const bodies: Partial<Preferences>[] = [];

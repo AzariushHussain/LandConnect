@@ -113,6 +113,14 @@ export class PrivacyApi {
   async block(id: string) {
     await this.request<void>(`/users/me/blocks/${this.target(id)}`, { method: 'PUT' });
   }
+  async blocked(id: string): Promise<boolean> {
+    const target = this.target(id);
+    const { value } = await this.request<unknown>(`/users/me/blocks/${target}`);
+    const data = row(value);
+    if (data.user_id !== target || typeof data.blocked !== 'boolean')
+      throw new Error('Could not verify this contact’s block status. Refresh before changing it.');
+    return data.blocked;
+  }
   async unblock(id: string) {
     await this.request<void>(`/users/me/blocks/${this.target(id)}`, { method: 'DELETE' });
   }

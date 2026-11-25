@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,7 @@ import {
 import { router, usePreventRemove } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { chatApi } from '../../application/services';
+import { chatApi, privacyApi, session } from '../../application/services';
 import { Action, Notice } from '../../ui/components';
 import { colors } from '../../ui/theme';
 import { Thread } from './thread';
@@ -26,10 +26,26 @@ import { CallButtons } from '../calls/CallButtons';
 import { ChatAvatar } from './ChatAvatar';
 import { IconButton } from '../../ui/IconButton';
 import { GroupCallButtons } from '../calls/GroupCallButtons';
+import { ContactBlock, emptyContactBlock } from '../privacy/contact-block';
+import { GroupActionRow } from './GroupActions';
+
+const noSubscription = () => () => {};
+const noBlockSnapshot = () => emptyContactBlock;
 
 export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
   const [thread] = useState(() => new Thread(id, actor, chatApi, randomUUID));
   const state = useSyncExternalStore(thread.subscribe, thread.getSnapshot);
+  const peer =
+    state.chat?.kind === 'direct'
+      ? state.chat.members.find((member) => member.user.id !== actor)?.user
+      : undefined;
+  const peerId = peer?.id;
+  const contact = useMemo(() => (peerId ? new ContactBlock(peerId, privacyApi) : null), [peerId]);
+  const block = useSyncExternalStore(
+    contact?.subscribe ?? noSubscription,
+    contact?.getSnapshot ?? noBlockSnapshot,
+  );
+  const messagingPaused = !!contact && (block.blocked === true || block.busy || block.uncertain);
   const [discard, setDiscard] = useState(false);
   const [options, setOptions] = useState(false);
   const hint = useCallback(
@@ -43,11 +59,16 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
     },
     [id, actor, thread],
   );
-  useChatUpdates(thread.sync, hint);
+  const refresh = useCallback(() => {
+    void thread.sync();
+    void contact?.refresh();
+  }, [thread, contact]);
+  useChatUpdates(refresh, hint);
   useEffect(() => thread.stop, [thread]);
-  usePreventRemove(!discard && (!!state.draft || !!state.attempt), ({ repeat }) => {
-    if (state.attempt?.sending) {
-      Alert.alert('Please wait', 'Wait for the send attempt to finish.');
+  useEffect(() => () => contact?.stop(), [contact]);
+  usePreventRemove(!discard && (!!state.draft || !!state.attempt || block.busy), ({ repeat }) => {
+    if (state.attempt?.sending || block.busy) {
+      Alert.alert('Please wait', 'Wait for the current action to finish.');
       return;
     }
     Alert.alert(
@@ -66,6 +87,36 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
       ],
     );
   });
+  function confirmBlock() {
+    if (
+      !contact ||
+      !peer ||
+      block.loading ||
+      block.busy ||
+      block.uncertain ||
+      block.blocked === null ||
+      state.attempt?.sending
+    )
+      return;
+    const desired = !block.blocked;
+    setOptions(false);
+    Alert.alert(
+      `${desired ? 'Block' : 'Unblock'} ${peer.display_name}?`,
+      desired
+        ? 'This prevents direct messages, calls and new invitations between you and ends any direct call between you. Existing messages and shared groups remain visible.'
+        : 'Communication becomes available when the other account’s privacy settings and blocks also allow it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: desired ? 'Block user' : 'Unblock user',
+          style: desired ? 'destructive' : 'default',
+          onPress: () => {
+            if (session.access()?.user.id === actor) void contact.change(desired);
+          },
+        },
+      ],
+    );
+  }
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <KeyboardAvoidingView
@@ -107,7 +158,12 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
               state.chat.members
                 .filter((member) => member.user.id !== actor)
                 .map((member) => (
-                  <CallButtons key={member.user.id} peerId={member.user.id} compact />
+                  <CallButtons
+                    key={member.user.id}
+                    peerId={member.user.id}
+                    compact
+                    disabled={messagingPaused}
+                  />
                 ))}
             {state.chat?.kind === 'group' && !state.unavailable && (
               <GroupCallButtons conversationId={id} />
@@ -119,6 +175,8 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
             />
           </View>
           {!!state.error && <Notice error>{state.error}</Notice>}
+          {!!block.error && <Notice error>{block.error}</Notice>}
+          {!!block.notice && <Notice>{block.notice}</Notice>}
         </View>
         <Modal
           visible={options}
@@ -135,7 +193,7 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
                   label={state.moreNew ? 'Load more new messages' : 'Refresh chat'}
                   secondary
                   busy={state.syncing}
-                  onPress={() => void thread.sync()}
+                  onPress={refresh}
                 />
               )}
               {state.chat?.kind === 'group' && (
@@ -147,6 +205,38 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
                     router.push({ pathname: '/chats/[id]/info', params: { id } });
                   }}
                 />
+              )}
+              {peer && contact && !state.unavailable && (
+                <>
+                  {block.loading && <Notice>Checking contact privacy…</Notice>}
+                  {block.blocked !== null && !block.uncertain && (
+                    <GroupActionRow
+                      icon={block.blocked ? 'checkmark-circle-outline' : 'ban-outline'}
+                      label={block.blocked ? 'Unblock user' : 'Block user'}
+                      detail={peer.display_name}
+                      danger={!block.blocked}
+                      disabled={block.loading || block.busy || !!state.attempt?.sending}
+                      onPress={confirmBlock}
+                    />
+                  )}
+                  {(block.error || block.uncertain || block.blocked === null) && (
+                    <Action
+                      label="Refresh contact privacy"
+                      secondary
+                      busy={block.loading}
+                      disabled={block.busy}
+                      onPress={() => void contact.refresh()}
+                    />
+                  )}
+                  <Action
+                    label="Blocked contacts"
+                    secondary
+                    onPress={() => {
+                      setOptions(false);
+                      router.push('/privacy/blocked');
+                    }}
+                  />
+                </>
               )}
               <Action label="Close options" secondary onPress={() => setOptions(false)} />
             </View>
@@ -196,7 +286,30 @@ export function ThreadScreen({ id, actor }: { id: string; actor: string }) {
             }
           />
         )}
-        {!state.unavailable && (
+        {!state.unavailable && messagingPaused && (
+          <View style={styles.composer}>
+            <Notice>
+              {block.busy
+                ? 'Updating contact privacy…'
+                : block.uncertain
+                  ? 'Refresh contact privacy before messaging or calling.'
+                  : 'You blocked this contact. Unblock to send messages or call.'}
+            </Notice>
+            {block.blocked && !block.uncertain ? (
+              <Action label="Unblock user" secondary busy={block.busy} onPress={confirmBlock} />
+            ) : (
+              !block.busy && (
+                <Action
+                  label="Refresh contact privacy"
+                  secondary
+                  busy={block.loading}
+                  onPress={() => void contact?.refresh()}
+                />
+              )
+            )}
+          </View>
+        )}
+        {!state.unavailable && !messagingPaused && (
           <View style={styles.composer}>
             {state.attempt && (
               <>

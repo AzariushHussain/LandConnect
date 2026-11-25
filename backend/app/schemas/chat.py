@@ -75,6 +75,11 @@ class BlockPage(BaseModel):
     offset: int
 
 
+class BlockStatus(BaseModel):
+    user_id: uuid.UUID
+    blocked: bool
+
+
 class MessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     client_id: uuid.UUID

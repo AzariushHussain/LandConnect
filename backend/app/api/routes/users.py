@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Response
 
 from app.api.deps import CurrentUser, DatabaseSession
 from app.models.user import User
-from app.schemas.chat import BlockPage, PageFilters, PrivacyUpdate
+from app.schemas.chat import BlockPage, BlockStatus, PageFilters, PrivacyUpdate
 from app.schemas.user import UserResponse, UserSearchFilters, UserSearchResponse
 from app.services import chat, users
 
@@ -57,6 +57,12 @@ def blocks(
 def block(user_id: uuid.UUID, user: CurrentUser, db: DatabaseSession) -> Response:
     chat.block_user(db, user.id, user_id)
     return Response(status_code=204)
+
+
+@router.get("/me/blocks/{user_id}", response_model=BlockStatus)
+def block_status(user_id: uuid.UUID, user: CurrentUser, db: DatabaseSession, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return BlockStatus(user_id=user_id, blocked=chat.block_status(db, user.id, user_id))
 
 
 @router.delete("/me/blocks/{user_id}", status_code=204)

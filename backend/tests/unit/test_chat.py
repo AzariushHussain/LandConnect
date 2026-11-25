@@ -51,6 +51,33 @@ def direct(people):
     return response.json()["id"]
 
 
+def test_block_status_is_private_directional_and_tracks_confirmed_changes(people):
+    path = "/users/me/blocks/" + people.ids["b"]
+    assert people.client.get(path).status_code == 401
+    response = people.client.get(path, headers=people.headers["a"])
+    assert response.json() == {"user_id": people.ids["b"], "blocked": False}
+    assert response.headers["cache-control"] == "no-store"
+    assert people.client.put(path, headers=people.headers["a"]).status_code == 204
+    assert people.client.get(path, headers=people.headers["a"]).json()["blocked"] is True
+    # Neither another user's block list nor the reverse block direction is disclosed.
+    assert people.client.get(path, headers=people.headers["c"]).json()["blocked"] is False
+    reverse = "/users/me/blocks/" + people.ids["a"]
+    assert people.client.get(reverse, headers=people.headers["b"]).json()["blocked"] is False
+    assert people.client.delete(path, headers=people.headers["a"]).status_code == 204
+    assert people.client.get(path, headers=people.headers["a"]).json()["blocked"] is False
+    assert people.client.get(reverse, headers=people.headers["a"]).status_code == 422
+    assert (
+        people.client.get("/users/me/blocks/not-a-uuid", headers=people.headers["a"]).status_code
+        == 422
+    )
+    assert (
+        people.client.get(
+            "/users/me/blocks/" + str(uuid.uuid4()), headers=people.headers["a"]
+        ).status_code
+        == 404
+    )
+
+
 def group(people):
     response = people.client.post(
         "/conversations/groups",
